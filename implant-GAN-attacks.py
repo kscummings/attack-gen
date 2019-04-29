@@ -24,6 +24,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 import os
+import time
 
 import attack-GAN
 import format-data
@@ -40,11 +41,8 @@ BATCH_SIZE = 256
 DEFINE SIMULTANEOUS TRAINING REGIME
 '''
 
-@tf.function
-# apparently this needs to compile before we train
-
-def train_step(generator, discriminator,
-               attack_data, clean_data):
+@tf.function # apparently this needs to compile before we train
+def train_step(attack_data, clean_data):
     """
     one training step
     updates gradients of generator and discriminator at same time
@@ -85,7 +83,8 @@ MAIN LOOP
 BUILD THE SYNTHETIC DATASET
 '''
 
-def main():
+if __name__ == '__main__':
+
     """
     Train, implant, and write to disc.
     """
@@ -94,15 +93,11 @@ def main():
     (clean_roll, y_clean_roll), (attack_roll, y_attack_roll), names = format-data.get_rolled_data()
 
     # instantiate models from attack-generator-model.py
-    generator = 0
-    discriminator = 0
+    generator = attack-GAN.vae_gen_model()
+    discriminator = attack-GAN.disc_model()
     # train up to a certain point on clean data
     # batch and shuffle attack data
     # train the models to generate synthetic attacks
     # generate attacks using the decoder & random noise as input
     # implant synthetic attacks
     # write new dataset to disc
-
-
-if __name__ == '__main__':
-    main()
