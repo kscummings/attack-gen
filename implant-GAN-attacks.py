@@ -10,7 +10,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from scipy.stats import multivariate_normal
 
 from sklearn.metrics import confusion_matrix
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.utils import shuffle
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
@@ -34,7 +33,8 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 
-import attack-generator-model
+import attack-GAN
+import format-data
 
 '''
 CONSTANTS
@@ -43,23 +43,6 @@ CONSTANTS
 BUFFER_SIZE = 60000
 BATCH_SIZE = 256
 
-'''
-TREAT DATA
-'''
-
-def roll(x, y, window_length):
-    """
-    roll data into windows
-    """
-    n = x.shape[0] - window_length + 1 # new num obs
-    m = x.shape[1] # num features
-    x_rolled = np.zeros((n,window_length,m))
-    y_rolled = np.zeros(n)
-    for w in range(n):
-        x_rolled[w] = x[w:(w+window_length)]
-        y_rolled[w] = np.any(y[w:(w+window_length)]==1).astype(int)
-
-    return (x_rolled, y_rolled)
 
 '''
 DEFINE SIMULTANEOUS TRAINING REGIME
@@ -106,40 +89,6 @@ def train(attack_data, epochs):
 
 
 '''
-IMPORT AND PREPROCESS DATA
-'''
-
-W_LENGTH = 24       # time window of each rolled observation
-STD_PCT = 0.1       # percentage of features to toss, determined by lowest variance
-
-# import
-clean = pd.read_csv("./batadal/BATADAL_dataset03.csv")
-attack = pd.read_csv("./batadal/BATADAL_dataset04_manualflags.csv")
-
-# feature/response format
-y_clean = clean['ATT_FLAG'].values
-y_attack = attack['ATT_FLAG'].values
-clean = clean.drop(columns=['DATETIME','ATT_FLAG'])
-attack = attack.drop(columns=['DATETIME','ATT_FLAG']).values
-
-names = clean.columns
-clean = clean.values            # keras takes np arrays
-
-# standardize data and remove low-variance features
-scaler = MinMaxScaler()
-scaler.fit(clean)
-clean = scaler.fit_transform(clean)
-attack = scaler.transform(attack)
-keep = clean.std(0) > np.percentile(clean.std(0), STD_PCT)
-clean = clean[:,keep]
-attack = attack[:,keep]
-names = names[keep]
-
-# roll data into windows
-clean_roll, y_clean_roll = roll(clean, y_clean, W_LENGTH)
-attack_roll, y_attack_roll = roll(attack, y_attack, W_LENGTH)
-
-'''
 MAIN LOOP
 BUILD THE SYNTHETIC DATASET
 '''
@@ -148,6 +97,10 @@ def main():
     """
     Train, implant, and write to disc.
     """
+
+    # get data
+    (clean_roll, y_clean_roll), (attack_roll, y_attack_roll) = format-data.get_rolled_data()
+
     # instantiate models from attack-generator-model.py
     generator = 0
     discriminator = 0
