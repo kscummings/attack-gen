@@ -1,7 +1,7 @@
 '''
-final 6.883 project
-continuation of work done at ORNL w Jason Laska
-trying to build a GAN instead of manually generating attacks
+generator and discriminator to generate synthetic attacks
+training regime code based on https://www.tensorflow.org/alpha/tutorials/generative/dcgan
+VAE generator based on https://ascelibrary.org/doi/full/10.1061/%28ASCE%29WR.1943-5452.0001007
 '''
 
 from __future__ import absolute_import
@@ -72,7 +72,7 @@ def vae_gen_model(input_shape=(24,36),
 
     # build encoder
 
-    conv[3] = input_shape[1]
+    conv[2] = input_shape[1]
     inputs = Input(shape=input_shape,name='encoder_input')
     conv_1 = Conv1D(filters = conv[0], kernel_size = k_size,
              padding = pad_type, strides = 1)(inputs)
@@ -129,6 +129,7 @@ def vae_gen_model(input_shape=(24,36),
     outputs = decoder(encoder(inputs)[2])[2]
     vae = Model(inputs, outputs, name='vae')
 
+    return vae
 
 
 def gen_model(num_dense=3,
@@ -278,39 +279,3 @@ def generator_loss(fake_output):
     on the generated images to an array of 1s."
     """
     return binary_crossentropy(tf.ones_like(fake_output), fake_output)
-
-'''
-IMPORT AND PREPROCESS DATA
-'''
-
-W_LENGTH = 24       # time window of each rolled observation
-STD_PCT = 0.1       # percentage of features to toss, determined by lowest variance
-
-# import raw clean data
-train = pd.read_csv("./batadal/BATADAL_dataset03.csv")
-y_train = train['ATT_FLAG'].values
-train = train.drop(columns=['DATETIME','ATT_FLAG'])
-names = train.columns
-train = train.values            # keras takes np arrays
-
-# raw train data with real cyber attacks and re-labeled attack flags
-real_train = pd.read_csv("./batadal/BATADAL_dataset04_manualflags.csv")
-y_real_train = real_train['ATT_FLAG'].values
-real_train = real_train.drop(columns=['DATETIME','ATT_FLAG']).values
-
-# standardize and shuck
-scaler = MinMaxScaler()
-train = scaler.fit_transform(train)
-real_train = scaler.transform(real_train)
-keep = train.std(0) > np.percentile(train.std(0), STD_PCT)
-train = train[:,keep]
-real_train = real_train[:,keep]
-names = names[keep]
-
-# roll real train data
-NUM_OBS = real_train.shape[0] - W_LENGTH + 1
-real_rolled = np.zeros((NUM_OBS, W_LENGTH, len(names)))
-y_real_rolled = np.zeros(NUM_OBS)
-for w in range(NUM_OBS):
-    real_rolled[w] = real_train[w:(w+W_LENGTH)]
-    y_real_rolled[w] = np.any(y_real_train[w:(w+W_LENGTH)]==1).astype(int)
