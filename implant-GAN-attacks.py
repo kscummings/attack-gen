@@ -9,10 +9,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 from scipy.stats import multivariate_normal
 
-from sklearn.metrics import confusion_matrix
-from sklearn.utils import shuffle
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
 from keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
@@ -25,12 +21,8 @@ from keras.optimizers import sgd
 from keras.callbacks import EarlyStopping
 
 import tensorflow as tf
-
-import seaborn as sns
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import argparse
 import os
 
 import attack-GAN
@@ -99,7 +91,7 @@ def main():
     """
 
     # get data
-    (clean_roll, y_clean_roll), (attack_roll, y_attack_roll) = format-data.get_rolled_data()
+    (clean_roll, y_clean_roll), (attack_roll, y_attack_roll), names = format-data.get_rolled_data()
 
     # instantiate models from attack-generator-model.py
     generator = 0

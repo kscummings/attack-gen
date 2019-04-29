@@ -59,4 +59,4 @@ def get_rolled_data(std_pct=0.1,window_length=24):
     clean_roll, y_clean_roll = roll(clean, y_clean, window_length)
     attack_roll, y_attack_roll = roll(attack, y_attack, window_length)
 
-    return (clean_roll, y_clean_roll), (attack_roll, y_attack_roll)
+    return (clean_roll, y_clean_roll), (attack_roll, y_attack_roll), names
