@@ -9,6 +9,12 @@ from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
 
+
+# TODO: Need raw data in directory called 'batadal'
+# TODO: Write R script to transform dataset04 labels (meh)?
+# TODO: Need function to format attack data
+
+
 '''
 HELPER FUNCTIONS
 '''
@@ -60,3 +66,10 @@ def get_rolled_data(std_pct=0.1,window_length=24):
     attack_roll, y_attack_roll = roll(attack, y_attack, window_length)
 
     return (clean_roll, y_clean_roll), (attack_roll, y_attack_roll), names
+
+def get_rolled_attack_data(std_pct=0.1,window_length=24):
+    """
+    Get training examples to train discriminator
+    """
+    (_, _), (attack, y_attack), _ = get_rolled_data(std_pct,window_length)
+    return attack[y_attack==1,:] 

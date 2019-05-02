@@ -37,7 +37,7 @@ import argparse
 import os
 
 '''
-BUILD GENERATOR
+BUILD AND PRIME GENERATOR
 '''
 
 # reparameterization trick
@@ -74,7 +74,7 @@ def vae_gen_model(data,                  # unroll into train/validation feat.
     """
     Prime attack generator to reconstruct clean windows
     Architecture is Chandy's VAE
-    Train in function to ensure decoder is trained and separable 
+    Train in function to ensure decoder is trained and separable
     """
     (clean_train, clean_val) = data
 
@@ -135,16 +135,18 @@ def vae_gen_model(data,                  # unroll into train/validation feat.
 
     # add loss and optimizer to vae
     #reconstruction_loss = mse(inputs, outputs)
-    reconstruction_loss = mse(inputs, outputs)
-    reconstruction_loss *= input_shape[1]
-    reconstruction_loss = K.sum(reconstruction_loss, axis=-1)
-
-    kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-    kl_loss = K.sum(kl_loss, axis=-1)
-    kl_loss = K.sum(kl_loss, axis=-1)
-    kl_loss *= -0.5
-
-    vae_loss = K.mean(reconstruction_loss + kl_loss)
+    # reconstruction_loss = mse(inputs, outputs)
+    # reconstruction_loss *= input_shape[1]
+    # reconstruction_loss = K.sum(reconstruction_loss, axis=-1)
+    #
+    # kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+    # kl_loss = K.sum(kl_loss, axis=-1)
+    # kl_loss = K.sum(kl_loss, axis=-1)
+    # kl_loss *= -0.5
+    #
+    # vae_loss = K.mean(reconstruction_loss + kl_loss)
+    
+    vae_loss = vae_loss(inputs, outputs, input_shape, z_mean, z_log_var)
     vae.add_loss(vae_loss)
     vae.compile(optimizer='adam')
 
@@ -153,51 +155,6 @@ def vae_gen_model(data,                  # unroll into train/validation feat.
     return encoder, decoder, vae
 
 
-def gen_model(num_dense=3,
-              input_shape=(24,36),
-              reg=.00,
-              kernel_initializer='glorot_uniform'):
-    """
-    Build a dumb attack generator that takes clean data window as input
-    For now, just some dense layers...
-    # Arguments
-        num_dense = number of modules in network
-        input_shape = input dim of each obs
-        reg = regularization parameter
-        kernel_initializer = NN parameter initialization or something like that idk
-
-    """
-    gen=Sequential()
-    dense_dim=input_shape[1]
-
-    # i think this flattens automatically
-    gen.add(Dense(dense_dim,
-                  input_shape=input_shape,
-                  kernel_initializer=kernel_initializer,
-                  kernel_regularizer = l2(reg),
-                  bias_initializer = 'ones',
-                  bias_regularizer = l2(reg),
-                  activation = 'relu'))
-
-
-    for i in range(num_dense-1):
-        gen.add(BatchNormalization())
-        gen.add(Dense(dense_dim,
-                      kernel_initializer=kernel_initializer,
-                      kernel_regularizer= l2(reg),
-                      bias_initializer = 'ones',
-                      bias_regularizer = l2(reg),
-                      activation = 'relu'))
-
-    gen.add(BatchNormalization())
-    gen.add(Dense(dense_dim,
-                    kernel_initializer=kernel_initializer,
-                    kernel_regularizer= l2(reg),
-                    bias_initializer = 'ones',
-                    bias_regularizer = l2(reg),
-                    activation = 'softmax'))
-
-    return gen
 
 '''
 BUILD DISCRIMINATOR
@@ -301,8 +258,20 @@ def gen_loss(fake_output):
     """
     return binary_crossentropy(tf.ones_like(fake_output), fake_output)
 
-def gen_loss_prelim():
+def vae_loss(inputs, outputs, input_shape, z_mean, z_log_var):
     """
     Before training the generator as a GAN, we prime it by training it to reconstruct
     clean sensor readings.
     """
+    # add loss and optimizer to vae
+    #reconstruction_loss = mse(inputs, outputs)
+    reconstruction_loss = mse(inputs, outputs)
+    reconstruction_loss *= input_shape[1]
+    reconstruction_loss = K.sum(reconstruction_loss, axis=-1)
+
+    kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss *= -0.5
+
+    return K.mean(reconstruction_loss + kl_loss)

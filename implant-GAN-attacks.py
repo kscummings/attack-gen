@@ -38,26 +38,26 @@ BATCH_SIZE = 256
 TEST_SIZE = 0.3
 EPOCHS = 20
 
-
 '''
 DEFINE SIMULTANEOUS TRAINING REGIME
 '''
 
 @tf.function # apparently this needs to compile before we train
-def train_step(attack_data, clean_data):
+def train_step(attack_data):
     """
     one training step
     updates gradients of generator and discriminator at same time
     """
+    noise = tf.random.normal([BATCH_SIZE, 6, 100])
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-      synthetic_attack_data=generator(clean_data, training=True)
+      synthetic_attack_data=generator(noise, training=True)
 
       real_output = discriminator(attack_data, training=True)
       fake_output = discriminator(synthetic_attack_data, training=True)
 
-      gen_loss = generator_loss(fake_output)
-      disc_loss = discriminator_loss(real_output, fake_output)
+      gen_loss = attack_GAN.generator_loss(fake_output)
+      disc_loss = attack-GAN.discriminator_loss(real_output, fake_output)
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
@@ -73,8 +73,7 @@ def train(attack_data, epochs):
     for epoch in range(epochs):
         start=time.time()
         for batch in attack_data:
-            train_step(generator, discriminator,
-                batch, clean_data.sample(n=BATCH_SIZE))
+            train_step(generator, discriminator, batch)
 
         print('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
 
@@ -96,10 +95,9 @@ if __name__ == '__main__':
 
     # prime the decoder by training the VAE to reconstruct clean obs
     clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE, shuffle=True)
-    vae = attack-GAN.vae_gen_model()
-    vae.fit(clean_train, epochs=EPOCHS, batch_size=BATCH_SIZE,
-        validation_data=(clean_val, None))
+    _, decoder, vae = attack-GAN.vae_gen_model((clean_train, clean_val))
 
+    generator = decoder
     discriminator = attack-GAN.disc_model()
     # train up to a certain point on clean data
     # batch and shuffle attack data
