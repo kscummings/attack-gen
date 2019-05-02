@@ -99,9 +99,15 @@ if __name__ == '__main__':
 
     generator = decoder
     discriminator = attack-GAN.disc_model()
-    # train up to a certain point on clean data
+    generator_optimizer=tf.keras.optimizers.Adam(1e-4)
+    discriminator_optimizer=tf.keras.optimizers.Adam(1e-4)
+
     # batch and shuffle attack data
+    train_attacks = format-data.get_rolled_attack_data()
+    train_dataset = tf.data.Dataset.from_tensor_slices(train_attacks).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
+
     # train the models to generate synthetic attacks
-    # generate attacks using the decoder & random noise as input
+    train(train_dataset, EPOCHS)
+
     # implant synthetic attacks
     # write new dataset to disc
