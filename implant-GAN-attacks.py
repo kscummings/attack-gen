@@ -11,14 +11,14 @@ from scipy.stats import multivariate_normal
 
 from sklearn.model_selection import train_test_split
 
-from keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
-from keras.models import Model, Sequential
-from keras.losses import mse, categorical_crossentropy, binary_crossentropy
-from keras.utils import plot_model, to_categorical
-from keras import backend as K
-from keras.regularizers import l2
-from keras.optimizers import sgd
-from keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.losses import mse, categorical_crossentropy, binary_crossentropy
+from tensorflow.keras.utils import plot_model, to_categorical
+from tensorflow.keras import backend as K
+from tensorflow.keras.regularizers import l2
+#from keras.optimizers import sgd
+#from keras.callbacks import EarlyStopping
 
 import tensorflow as tf
 import numpy as np
@@ -35,6 +35,8 @@ CONSTANTS
 
 BUFFER_SIZE = 60000
 BATCH_SIZE = 256
+TEST_SIZE = 0.3
+EPOCHS = 20
 
 
 '''
@@ -90,10 +92,14 @@ if __name__ == '__main__':
     """
 
     # get data
-    (clean_roll, y_clean_roll), (attack_roll, y_attack_roll), names = format-data.get_rolled_data()
+    (clean, y_clean), (attack, y_attack), names = format-data.get_rolled_data()
 
-    # instantiate models from attack-generator-model.py
-    generator = attack-GAN.vae_gen_model()
+    # prime the decoder by training the VAE to reconstruct clean obs
+    clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE, shuffle=True)
+    vae = attack-GAN.vae_gen_model()
+    vae.fit(clean_train, epochs=EPOCHS, batch_size=BATCH_SIZE,
+        validation_data=(clean_val, None))
+
     discriminator = attack-GAN.disc_model()
     # train up to a certain point on clean data
     # batch and shuffle attack data

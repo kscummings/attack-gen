@@ -17,18 +17,21 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
-from keras.models import Model, Sequential
-from keras.losses import mse, categorical_crossentropy, binary_crossentropy
-from keras.utils import plot_model, to_categorical
-from keras import backend as K
-from keras.regularizers import l2
-from keras.optimizers import sgd
-from keras.callbacks import EarlyStopping
+from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.losses import mse, categorical_crossentropy, binary_crossentropy
+from tensorflow.keras.utils import plot_model, to_categorical
+from tensorflow.keras import backend as K
+from tensorflow.keras.regularizers import l2
+#from tensorflow.keras.optimizers import sgd
+#from tensorflow.keras.callbacks import EarlyStopping
 
-import seaborn as sns
+#import seaborn as sns
 import numpy as np
 import pandas as pd
+# uncomment if in virtualenv
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import argparse
 import os
@@ -57,18 +60,23 @@ def sampling(args):
     return z_mean + K.exp(0.5 * z_log_var) * epsilon # latent tensor
 
 
-def vae_gen_model(input_shape=(24,36),
+def vae_gen_model(data,                  # unroll into train/validation feat.
+                  input_shape=(24,36),
                   k_size=5,
                   conv=[60,80,36],
                   resolution=2,
                   dense=[200,160,480],
                   latent_dim=100,
                   pad_type='same',
-                  act_type='relu'):
+                  act_type='relu',
+                  ep=40,
+                  b_s=128):
     """
-    Build attack generator that takes clean data window as input
-    Architecture based on Chandy's VAE
+    Prime attack generator to reconstruct clean windows
+    Architecture is Chandy's VAE
+    Train in function to ensure decoder is trained and separable 
     """
+    (clean_train, clean_val) = data
 
     # build encoder
 
@@ -96,9 +104,6 @@ def vae_gen_model(input_shape=(24,36),
     # output shape is (batch_size, 6, latent_dim)
     z = Lambda(function = sampling, name='z')([z_mean, z_log_var])
 
-    # instantiate encoder
-    encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
-
     # build decoder
     latent_inputs = Input(shape=K.int_shape(z)[1:], name='z_sampling')
     d_dense_1 = Dense(units=dense[1], activation=act_type)(latent_inputs)
@@ -122,14 +127,30 @@ def vae_gen_model(input_shape=(24,36),
     # join the branches by generating random normals. this is our reconstruction
     outputs = Lambda(function = sampling, name='output')([d_mean, d_log_var])
 
-    # instantiate decoder
+    # instantiate models
+    encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
     decoder = Model(latent_inputs, [d_mean,d_log_var,outputs], name='decoder')
-
-    # instantiate vae
     outputs = decoder(encoder(inputs)[2])[2]
     vae = Model(inputs, outputs, name='vae')
 
-    return vae
+    # add loss and optimizer to vae
+    #reconstruction_loss = mse(inputs, outputs)
+    reconstruction_loss = mse(inputs, outputs)
+    reconstruction_loss *= input_shape[1]
+    reconstruction_loss = K.sum(reconstruction_loss, axis=-1)
+
+    kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss *= -0.5
+
+    vae_loss = K.mean(reconstruction_loss + kl_loss)
+    vae.add_loss(vae_loss)
+    vae.compile(optimizer='adam')
+
+    vae.fit(clean_train,epochs=ep,batch_size=b_s,validation_data=(clean_val,None))
+
+    return encoder, decoder, vae
 
 
 def gen_model(num_dense=3,
@@ -257,7 +278,7 @@ def disc_model(conv_layers = [50,50,50],
 DEFINE LOSS FUNCTIONS
 '''
 
-def discriminator_loss(real_output, fake_output):
+def disc_loss(real_output, fake_output):
     """
     from https://www.tensorflow.org/alpha/tutorials/generative/dcgan
     "This method quantifies how well the discriminator is able to distinguish real
@@ -270,7 +291,7 @@ def discriminator_loss(real_output, fake_output):
     total_loss = real_loss + fake_loss
     return total_loss
 
-def generator_loss(fake_output):
+def gen_loss(fake_output):
     """
     from https://www.tensorflow.org/alpha/tutorials/generative/dcgan
     "The generator's loss quantifies how well it was able to trick the discriminator.
@@ -279,3 +300,9 @@ def generator_loss(fake_output):
     on the generated images to an array of 1s."
     """
     return binary_crossentropy(tf.ones_like(fake_output), fake_output)
+
+def gen_loss_prelim():
+    """
+    Before training the generator as a GAN, we prime it by training it to reconstruct
+    clean sensor readings.
+    """
