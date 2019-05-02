@@ -145,9 +145,9 @@ def vae_gen_model(data,                  # unroll into train/validation feat.
     # kl_loss *= -0.5
     #
     # vae_loss = K.mean(reconstruction_loss + kl_loss)
-    
-    vae_loss = vae_loss(inputs, outputs, input_shape, z_mean, z_log_var)
-    vae.add_loss(vae_loss)
+
+    v_loss = vae_loss(inputs, outputs, input_shape, z_mean, z_log_var)
+    vae.add_loss(v_loss)
     vae.compile(optimizer='adam')
 
     vae.fit(clean_train,epochs=ep,batch_size=b_s,validation_data=(clean_val,None))
@@ -166,7 +166,7 @@ def disc_model(conv_layers = [50,50,50],
                  pad_type = 'same',
                  resolution = 2,
                  kernel_initializer = 'glorot_uniform',
-                 num_classes = 2,
+                 num_classes = 1,
                  input_shape = (24,36),
                  learning_rate = .01,
                  reg = .00):
@@ -195,7 +195,7 @@ def disc_model(conv_layers = [50,50,50],
                   kernel_regularizer = l2(reg),
                   bias_initializer = 'ones',
                   bias_regularizer = l2(reg)))
-    disc.add(MaxPool1D(pool_size = resolution, padding = pad_type))
+    disc.add(MaxPooling1D(pool_size = resolution, padding = pad_type))
     disc.add(BatchNormalization(axis=2))
 
     n_conv = len(conv_layers)
@@ -211,7 +211,7 @@ def disc_model(conv_layers = [50,50,50],
                   bias_regularizer = l2(reg)
                        )
                 )
-        disc.add(MaxPool1D(pool_size = resolution, padding = pad_type))
+        disc.add(MaxPooling1D(pool_size = resolution, padding = pad_type))
         disc.add(BatchNormalization(axis=2))
 
     disc.add(Flatten())
@@ -235,7 +235,7 @@ def disc_model(conv_layers = [50,50,50],
 DEFINE LOSS FUNCTIONS
 '''
 
-def disc_loss(real_output, fake_output):
+def discriminator_loss(real_output, fake_output):
     """
     from https://www.tensorflow.org/alpha/tutorials/generative/dcgan
     "This method quantifies how well the discriminator is able to distinguish real
@@ -248,7 +248,7 @@ def disc_loss(real_output, fake_output):
     total_loss = real_loss + fake_loss
     return total_loss
 
-def gen_loss(fake_output):
+def generator_loss(fake_output):
     """
     from https://www.tensorflow.org/alpha/tutorials/generative/dcgan
     "The generator's loss quantifies how well it was able to trick the discriminator.
@@ -264,7 +264,6 @@ def vae_loss(inputs, outputs, input_shape, z_mean, z_log_var):
     clean sensor readings.
     """
     # add loss and optimizer to vae
-    #reconstruction_loss = mse(inputs, outputs)
     reconstruction_loss = mse(inputs, outputs)
     reconstruction_loss *= input_shape[1]
     reconstruction_loss = K.sum(reconstruction_loss, axis=-1)

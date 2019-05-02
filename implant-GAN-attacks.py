@@ -48,16 +48,17 @@ def train_step(attack_data):
     one training step
     updates gradients of generator and discriminator at same time
     """
-    noise = tf.random.normal([BATCH_SIZE, 6, 100])
+    noise = tf.random.normal([attack_data.shape[0], 6, 100])
+    #attack_data = tf.cast(attack_data,tf.float32)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-      synthetic_attack_data=generator(noise, training=True)
+        _,_,synthetic_attack_data=generator(noise, training=True)
 
-      real_output = discriminator(attack_data, training=True)
-      fake_output = discriminator(synthetic_attack_data, training=True)
+        real_output = discriminator(attack_data, training=True) # note: doesn't like np array inputs
+        fake_output = discriminator(synthetic_attack_data, training=True)
 
-      gen_loss = attack_GAN.generator_loss(fake_output)
-      disc_loss = attack-GAN.discriminator_loss(real_output, fake_output)
+        gen_loss = attack_GAN.generator_loss(fake_output)
+        disc_loss = attack-GAN.discriminator_loss(real_output, fake_output)
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
@@ -73,7 +74,7 @@ def train(attack_data, epochs):
     for epoch in range(epochs):
         start=time.time()
         for batch in attack_data:
-            train_step(generator, discriminator, batch)
+            train_step(batch)
 
         print('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
 
@@ -102,11 +103,10 @@ if __name__ == '__main__':
     generator_optimizer=tf.keras.optimizers.Adam(1e-4)
     discriminator_optimizer=tf.keras.optimizers.Adam(1e-4)
 
-    # batch and shuffle attack data
+    # train the GAN
     train_attacks = format-data.get_rolled_attack_data()
+    train_attacks = tf.cast(train_attacks,tf.float32)
     train_dataset = tf.data.Dataset.from_tensor_slices(train_attacks).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
-
-    # train the models to generate synthetic attacks
     train(train_dataset, EPOCHS)
 
     # implant synthetic attacks
