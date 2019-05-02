@@ -26,7 +26,8 @@ from tensorflow.keras.regularizers import l2
 #from tensorflow.keras.optimizers import sgd
 #from tensorflow.keras.callbacks import EarlyStopping
 
-#import seaborn as sns
+import seaborn as sns
+import tensorflow as tf
 import numpy as np
 import pandas as pd
 # uncomment if in virtualenv

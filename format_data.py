@@ -61,6 +61,14 @@ def get_rolled_data(std_pct=0.1,window_length=24):
     attack = attack[:,keep]
     names = names[keep]
 
+    # if sort:
+    #     temp_clean=((clean==1)|(clean==0))
+    #     m=clean.shape[1]
+    #     bin_feature=[np.all(hmm[:,j]) for j in np.arange(m)]
+    #     nonbin_feature=[bin_feature[i]==False for i in np.arange(m)]
+    #     sorted_clean=np.hstack(clean[:,bin_feature],clean[:,nonbin_feature])
+    #     names_clean=np.hstack(names[bin_feature],)
+
     # roll data into windows
     clean_roll, y_clean_roll = roll(clean, y_clean, window_length)
     attack_roll, y_attack_roll = roll(attack, y_attack, window_length)
@@ -72,4 +80,4 @@ def get_rolled_attack_data(std_pct=0.1,window_length=24):
     Get training examples to train discriminator
     """
     (_, _), (attack, y_attack), _ = get_rolled_data(std_pct,window_length)
-    return attack[y_attack==1,:] 
+    return attack[y_attack==1,:]

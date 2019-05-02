@@ -26,8 +26,8 @@ import pandas as pd
 import os
 import time
 
-import attack-GAN
-import format-data
+import attack_GAN
+import format_data
 
 '''
 CONSTANTS
@@ -36,7 +36,7 @@ CONSTANTS
 BUFFER_SIZE = 60000
 BATCH_SIZE = 256
 TEST_SIZE = 0.3
-EPOCHS = 20
+EPOCHS = 10
 
 '''
 DEFINE SIMULTANEOUS TRAINING REGIME
@@ -58,7 +58,7 @@ def train_step(attack_data):
         fake_output = discriminator(synthetic_attack_data, training=True)
 
         gen_loss = attack_GAN.generator_loss(fake_output)
-        disc_loss = attack-GAN.discriminator_loss(real_output, fake_output)
+        disc_loss = attack_GAN.discriminator_loss(real_output, fake_output)
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
@@ -92,19 +92,22 @@ if __name__ == '__main__':
     """
 
     # get data
-    (clean, y_clean), (attack, y_attack), names = format-data.get_rolled_data()
+    print("\n Getting data \n \n")
+    (clean, y_clean), (attack, y_attack), names = format_data.get_rolled_data()
 
     # prime the decoder by training the VAE to reconstruct clean obs
+    print("\n Training the VAE (priming generator) \n \n")
     clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE, shuffle=True)
-    _, decoder, vae = attack-GAN.vae_gen_model((clean_train, clean_val))
+    _, decoder, vae = attack_GAN.vae_gen_model((clean_train, clean_val),ep=5)
 
     generator = decoder
-    discriminator = attack-GAN.disc_model()
+    discriminator = attack_GAN.disc_model()
     generator_optimizer=tf.keras.optimizers.Adam(1e-4)
     discriminator_optimizer=tf.keras.optimizers.Adam(1e-4)
 
     # train the GAN
-    train_attacks = format-data.get_rolled_attack_data()
+    print("\n Training the GAN \n \n")
+    train_attacks = format_data.get_rolled_attack_data()
     train_attacks = tf.cast(train_attacks,tf.float32)
     train_dataset = tf.data.Dataset.from_tensor_slices(train_attacks).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
     train(train_dataset, EPOCHS)
