@@ -43,7 +43,6 @@ import attack_GAN
 CONSTANTS
 '''
 
-dir='temp'
 
 input_shape=(24,36)
 k_size=5
@@ -53,7 +52,7 @@ dense=[200,160,480]
 latent_dim=100
 pad_type='same'
 act_type='relu'
-ep_at_a_time=2
+ep_at_a_time=5
 num_times=1
 b_s=128
 TEST_SIZE=0.3
@@ -168,15 +167,17 @@ def viz():
 
     fig, ax = plt.subplots()
     sns.heatmap(window[0],vmin=lb, vmax=ub) # crashes ..
-    plt.savefig(os.path.join(dir,'original_window.png'))
+    plt.savefig(os.path.join(im_dir,'original_window.png'))
 
+    # look at windows
     for n in np.arange(1,num_times+1):
 
         fig, ax = plt.subplots()
         window_pred=window[n]
         sns.heatmap(window_pred,vmin=lb, vmax=ub)
-        plt.savefig(os.path.join(dir,'reconstructed_at_ep_{:04d}.png'.format(n*ep_at_a_time)))
+        plt.savefig(os.path.join(im_dir,'reconstructed_at_ep_{:04d}.png'.format(n*ep_at_a_time)))
 
+    # look at loss
     fig, ax = plt.subplots()
     ax.plot(loss_history[:,0], '-b', label='Training loss')
     ax.plot(loss_history[:,1], '--r', label='Validation loss')
@@ -186,8 +187,19 @@ def viz():
     plt.show()
 
 if __name__ == '__main__':
+    '''
+    prime the generator
+    '''
+    parser = argparse.ArgumentParser()
+    help_ = "give directory name"
+    parser.add_argument("-d", "--directory", help=help_)
+    args = parser.parse_args()
 
-    # get a window
+    # get output directory
+    dir = args.directory if args.directory else "temp"
+    im_dir=os.path.join(dir,'viz')
+
+    # grab a window
     window=clean_val[0]
     (x,y) = window.shape
     window=window.reshape(1,x,y)
@@ -206,6 +218,10 @@ if __name__ == '__main__':
     # get the images
     viz()
 
-    # save weights of model
+    # save weights, loss, windows
     vae.save_weights(os.path.join(dir,'vae.h5'))
     decoder.save_weights(os.path.join(dir,'decoder.h5'))
+    np.save(os.path.join(dir,'window.npy'),window)
+    loss_df = pd.DataFrame()
+    loss_df['loss'],loss_df['val_loss']=loss_history[:,0],loss_history[:,1]
+    loss_df.to_csv(os.path.join(dir,'loss_results.csv'), index=False)

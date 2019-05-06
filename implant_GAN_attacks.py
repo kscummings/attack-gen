@@ -36,7 +36,7 @@ BUFFER_SIZE = 60000
 BATCH_SIZE = 256
 TEST_SIZE_CL = 0.3
 TEST_SIZE_ATT = 0.15
-EPOCHS_VAE = 2
+EPOCHS_VAE = 200
 EPOCHS_GAN = 10
 
 '''
@@ -122,16 +122,13 @@ if __name__ == '__main__':
     if args.weights:
         print("\n Loading the primed generator \n \n ")
         _, decoder, _ = attack_GAN.vae_gen_model((clean_train, clean_val),to_train=False)
-        print(type(decoder))
-        decoder = decoder.load_weights(args.weights)
-        print(type(decoder))
+        decoder.load_weights(args.weights)
     else:
         print("\n Training the VAE (priming generator) \n \n")
         _, decoder, _ = attack_GAN.vae_gen_model((clean_train, clean_val),ep=EPOCHS_VAE)
 
     # set up the GAN
     generator = decoder
-    print(type(generator))
     discriminator = attack_GAN.disc_model()
     generator_optimizer=tf.keras.optimizers.Adam(1e-4)
     discriminator_optimizer=tf.keras.optimizers.Adam(1e-4)
