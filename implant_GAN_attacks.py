@@ -35,8 +35,10 @@ CONSTANTS
 
 BUFFER_SIZE = 60000
 BATCH_SIZE = 256
-TEST_SIZE = 0.3
-EPOCHS = 10
+TEST_SIZE_CL = 0.3
+TEST_SIZE_ATT = 0.15
+EPOCHS_VAE = 2
+EPOCHS_GAN = 10
 
 '''
 DEFINE SIMULTANEOUS TRAINING REGIME
@@ -66,7 +68,9 @@ def train_step(attack_data):
     generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
     discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
 
-def train(attack_data, epochs):
+    return gen_loss, disc_loss
+
+def train(attack_data, val_attack_data, epochs):
     """
     train generator and discriminator in batches
     """
@@ -74,9 +78,24 @@ def train(attack_data, epochs):
     for epoch in range(epochs):
         start=time.time()
         for batch in attack_data:
-            train_step(batch)
+            g,d=train_step(batch)
 
+        g,d=np.array(g),np.array(d) # per-instance training loss
+        gen_loss,disc_loss=sum(g),sum(d)
+
+        # get val loss
+        noise=tf.random.normal([val_attack_data.shape[0], 6, 100])
+        _,_,val_synthetic_data=generator(noise,training=False)
+        real_output=discriminator(val_attack_data,training=False)
+        fake_output=discriminator(val_synthetic_data,training=False)
+
+        val_gen_loss = sum(np.array(attack_GAN.generator_loss(fake_output)))
+        val_disc_loss = sum(np.array(attack_GAN.discriminator_loss(real_output,fake_output)))
+
+        history=np.stack([gen_loss,disc_loss,val_gen_loss,val_disc_loss]).T
+        loss_history=(history if epoch==0 else np.concatenate((loss_history,history),axis=0))
         print('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
+        print('Gen/disc loss: {}, {}. Val gen/disc loss: {}, {}.'.format(gen_loss, disc_loss, val_gen_loss, val_disc_loss))
 
 
 
@@ -91,14 +110,16 @@ if __name__ == '__main__':
     Train, implant, and write to disc.
     """
 
+    # TODO: provide an option to load in primed discriminator
+
     # get data
     print("\n Getting data \n \n")
     (clean, y_clean), (attack, y_attack), names = format_data.get_rolled_data()
 
     # prime the decoder by training the VAE to reconstruct clean obs
     print("\n Training the VAE (priming generator) \n \n")
-    clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE, shuffle=True)
-    _, decoder, vae = attack_GAN.vae_gen_model((clean_train, clean_val),ep=5)
+    clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE_CL, shuffle=True)
+    _, decoder, vae = attack_GAN.vae_gen_model((clean_train, clean_val),ep=EPOCHS_VAE)
 
     generator = decoder
     discriminator = attack_GAN.disc_model()
@@ -107,10 +128,11 @@ if __name__ == '__main__':
 
     # train the GAN
     print("\n Training the GAN \n \n")
-    train_attacks = format_data.get_rolled_attack_data()
-    train_attacks = tf.cast(train_attacks,tf.float32)
+    attacks = format_data.get_rolled_attack_data()
+    train_attacks, val_attacks = train_test_split(attacks, test_size=TEST_SIZE_ATT, shuffle=True)
+    train_attacks, val_attacks = tf.cast(train_attacks,tf.float32), tf.cast(val_attacks,tf.float32)
     train_dataset = tf.data.Dataset.from_tensor_slices(train_attacks).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
-    train(train_dataset, EPOCHS)
+    train(train_dataset, val_attacks, EPOCHS_GAN)
 
     # implant synthetic attacks
     # write new dataset to disc

@@ -42,6 +42,8 @@ import attack_GAN
 CONSTANTS
 '''
 
+dir='vae'
+
 input_shape=(24,36)
 k_size=5
 conv=[60,80,36]
@@ -50,8 +52,8 @@ dense=[200,160,480]
 latent_dim=100
 pad_type='same'
 act_type='relu'
-ep_at_a_time=3#30
-num_times=2#3
+ep_at_a_time=50
+num_times=4
 b_s=128
 TEST_SIZE=0.3
 
@@ -159,24 +161,26 @@ VISUALIZE
 '''
 def viz():
 
+    os.makedirs(dir, exist_ok=True)
+
     lb, ub = np.min(window), np.max(window)
 
     fig, ax = plt.subplots()
     sns.heatmap(window[0],vmin=lb, vmax=ub) # crashes ..
-    plt.savefig('original_window.png')
+    plt.savefig(os.path.join(dir,'original_window.png'))
 
     for n in np.arange(1,num_times+1):
 
         fig, ax = plt.subplots()
         window_pred=window[n]
         sns.heatmap(window_pred,vmin=lb, vmax=ub)
-        plt.savefig('reconstructed_at_ep_{:04d}.png'.format(n*ep_at_a_time))
+        plt.savefig(os.path.join(dir,'reconstructed_at_ep_{:04d}.png'.format(n*ep_at_a_time)))
 
     fig, ax = plt.subplots()
     ax.plot(loss_history[:,0], '-b', label='Training loss')
     ax.plot(loss_history[:,1], '--r', label='Validation loss')
     ax.legend(loc='upper right', frameon=False)
-    plt.savefig('loss')
+    plt.savefig(os.path.join(dir,'loss.png'))
 
     plt.show()
 
