@@ -2,6 +2,11 @@
 generator and discriminator to generate synthetic attacks
 training regime code based on https://www.tensorflow.org/alpha/tutorials/generative/dcgan
 VAE generator based on https://ascelibrary.org/doi/full/10.1061/%28ASCE%29WR.1943-5452.0001007
+
+set up virtualenv w/ tensorflow version 2.0.0 alpha
+
+bookmark:
+https://stackoverflow.com/questions/34977388/matplotlib-runtimeerror-python-is-not-installed-as-a-framework
 '''
 
 from __future__ import absolute_import
@@ -17,7 +22,8 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
+from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation
+from tensorflow.keras.layers import Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
 from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.losses import mse, categorical_crossentropy, binary_crossentropy
 from tensorflow.keras.utils import plot_model, to_categorical
@@ -62,6 +68,7 @@ def sampling(args):
 
 
 def vae_gen_model(data,                  # unroll into train/validation feat.
+                  to_train=True,          # whether to fit
                   input_shape=(24,36),
                   k_size=5,
                   conv=[60,80,36],
@@ -134,24 +141,12 @@ def vae_gen_model(data,                  # unroll into train/validation feat.
     outputs = decoder(encoder(inputs)[2])[2]
     vae = Model(inputs, outputs, name='vae')
 
-    # add loss and optimizer to vae
-    #reconstruction_loss = mse(inputs, outputs)
-    # reconstruction_loss = mse(inputs, outputs)
-    # reconstruction_loss *= input_shape[1]
-    # reconstruction_loss = K.sum(reconstruction_loss, axis=-1)
-    #
-    # kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-    # kl_loss = K.sum(kl_loss, axis=-1)
-    # kl_loss = K.sum(kl_loss, axis=-1)
-    # kl_loss *= -0.5
-    #
-    # vae_loss = K.mean(reconstruction_loss + kl_loss)
-
     v_loss = vae_loss(inputs, outputs, input_shape, z_mean, z_log_var)
     vae.add_loss(v_loss)
     vae.compile(optimizer='adam')
 
-    vae.fit(clean_train,epochs=ep,batch_size=b_s,validation_data=(clean_val,None))
+    if to_train:
+        vae.fit(clean_train,epochs=ep,batch_size=b_s,validation_data=(clean_val,None))
 
     return encoder, decoder, vae
 

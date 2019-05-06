@@ -12,7 +12,6 @@ import numpy as np
 
 # TODO: Need raw data in directory called 'batadal'
 # TODO: Write R script to transform dataset04 labels (meh)?
-# TODO: Need function to format attack data
 
 
 '''
@@ -60,14 +59,6 @@ def get_rolled_data(std_pct=0.1,window_length=24):
     clean = clean[:,keep]
     attack = attack[:,keep]
     names = names[keep]
-
-    # if sort:
-    #     temp_clean=((clean==1)|(clean==0))
-    #     m=clean.shape[1]
-    #     bin_feature=[np.all(hmm[:,j]) for j in np.arange(m)]
-    #     nonbin_feature=[bin_feature[i]==False for i in np.arange(m)]
-    #     sorted_clean=np.hstack(clean[:,bin_feature],clean[:,nonbin_feature])
-    #     names_clean=np.hstack(names[bin_feature],)
 
     # roll data into windows
     clean_roll, y_clean_roll = roll(clean, y_clean, window_length)

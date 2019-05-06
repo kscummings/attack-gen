@@ -1,8 +1,6 @@
 '''
-trying to build a GAN instead of manually generating attacks
-
-train model that generates attacks
-implant attacks in clean data, write to disc
+build a GAN instead of manually generating attacks
+implant synthetic attacks in clean data, write to disc
 '''
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -25,6 +23,7 @@ import numpy as np
 import pandas as pd
 import os
 import time
+import argparse
 
 import attack_GAN
 import format_data
@@ -51,7 +50,6 @@ def train_step(attack_data):
     updates gradients of generator and discriminator at same time
     """
     noise = tf.random.normal([attack_data.shape[0], 6, 100])
-    #attack_data = tf.cast(attack_data,tf.float32)
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         _,_,synthetic_attack_data=generator(noise, training=True)
@@ -95,7 +93,8 @@ def train(attack_data, val_attack_data, epochs):
         history=np.stack([gen_loss,disc_loss,val_gen_loss,val_disc_loss]).T
         loss_history=(history if epoch==0 else np.concatenate((loss_history,history),axis=0))
         print('Time for epoch {} is {} sec'.format(epoch + 1, time.time()-start))
-        print('Gen/disc loss: {}, {}. Val gen/disc loss: {}, {}.'.format(gen_loss, disc_loss, val_gen_loss, val_disc_loss))
+        print('Gen/disc loss: {}, {}. Val gen/disc loss: {}, {}.'.format(gen_loss, disc_loss,
+            val_gen_loss, val_disc_loss))
 
 
 
@@ -109,19 +108,30 @@ if __name__ == '__main__':
     """
     Train, implant, and write to disc.
     """
-
-    # TODO: provide an option to load in primed discriminator
+    parser = argparse.ArgumentParser()
+    help_ = "Load h5 model trained weights for decoder"
+    parser.add_argument("-w", "--weights", help=help_)
+    args = parser.parse_args()
 
     # get data
     print("\n Getting data \n \n")
     (clean, y_clean), (attack, y_attack), names = format_data.get_rolled_data()
 
     # prime the decoder by training the VAE to reconstruct clean obs
-    print("\n Training the VAE (priming generator) \n \n")
     clean_train, clean_val = train_test_split(clean, test_size=TEST_SIZE_CL, shuffle=True)
-    _, decoder, vae = attack_GAN.vae_gen_model((clean_train, clean_val),ep=EPOCHS_VAE)
+    if args.weights:
+        print("\n Loading the primed generator \n \n ")
+        _, decoder, _ = attack_GAN.vae_gen_model((clean_train, clean_val),to_train=False)
+        print(type(decoder))
+        decoder = decoder.load_weights(args.weights)
+        print(type(decoder))
+    else:
+        print("\n Training the VAE (priming generator) \n \n")
+        _, decoder, _ = attack_GAN.vae_gen_model((clean_train, clean_val),ep=EPOCHS_VAE)
 
+    # set up the GAN
     generator = decoder
+    print(type(generator))
     discriminator = attack_GAN.disc_model()
     generator_optimizer=tf.keras.optimizers.Adam(1e-4)
     discriminator_optimizer=tf.keras.optimizers.Adam(1e-4)

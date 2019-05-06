@@ -15,7 +15,8 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
+from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation
+from tensorflow.keras.layers import Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
 from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.losses import mse, categorical_crossentropy, binary_crossentropy
 from tensorflow.keras.utils import plot_model, to_categorical
@@ -42,7 +43,7 @@ import attack_GAN
 CONSTANTS
 '''
 
-dir='vae'
+dir='temp'
 
 input_shape=(24,36)
 k_size=5
@@ -52,8 +53,8 @@ dense=[200,160,480]
 latent_dim=100
 pad_type='same'
 act_type='relu'
-ep_at_a_time=50
-num_times=4
+ep_at_a_time=2
+num_times=1
 b_s=128
 TEST_SIZE=0.3
 
@@ -205,4 +206,6 @@ if __name__ == '__main__':
     # get the images
     viz()
 
-    # save TODO
+    # save weights of model
+    vae.save_weights(os.path.join(dir,'vae.h5'))
+    decoder.save_weights(os.path.join(dir,'decoder.h5'))
