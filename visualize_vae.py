@@ -52,8 +52,8 @@ dense=[200,160,480]
 latent_dim=100
 pad_type='same'
 act_type='relu'
-ep_at_a_time=5
-num_times=1
+ep_at_a_time=50
+num_times=4
 b_s=128
 TEST_SIZE=0.3
 
@@ -198,6 +198,8 @@ if __name__ == '__main__':
     # get output directory
     dir = args.directory if args.directory else "temp"
     im_dir=os.path.join(dir,'viz')
+    os.makedirs(dir,exist_ok=True)
+    os.makedirs(im_dir, exist_ok=True)
 
     # grab a window
     window=clean_val[0]
