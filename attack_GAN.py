@@ -7,7 +7,11 @@ set up virtualenv w/ tensorflow version 2.0.0 alpha
 
 bookmark:
 https://stackoverflow.com/questions/34977388/matplotlib-runtimeerror-python-is-not-installed-as-a-framework
+
+doesn't work--gradients always vanish :/ 
 '''
+
+
 
 from __future__ import absolute_import
 from __future__ import division
@@ -157,7 +161,7 @@ BUILD DISCRIMINATOR
 '''
 
 def disc_model(conv_layers = [50,50,50],
-                 dense_layers = [10,10],
+                 dense_layers = [30,10],
                  k_size = 5,
                  pad_type = 'same',
                  resolution = 2,

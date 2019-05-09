@@ -43,7 +43,7 @@ EPOCHS_GAN = 10
 DEFINE SIMULTANEOUS TRAINING REGIME
 '''
 
-@tf.function # apparently this needs to compile before we train
+# @tf.function
 def train_step(attack_data):
     """
     one training step
@@ -52,13 +52,13 @@ def train_step(attack_data):
     noise = tf.random.normal([attack_data.shape[0], 6, 100])
 
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-        _,_,synthetic_attack_data=generator(noise, training=True)
+      _,_,synthetic_attack_data=generator(noise, training=True)
 
-        real_output = discriminator(attack_data, training=True) # note: doesn't like np array inputs
-        fake_output = discriminator(synthetic_attack_data, training=True)
+      real_output = discriminator(attack_data, training=True) # note: doesn't like np array inputs
+      fake_output = discriminator(synthetic_attack_data, training=True)
 
-        gen_loss = attack_GAN.generator_loss(fake_output)
-        disc_loss = attack_GAN.discriminator_loss(real_output, fake_output)
+      gen_loss = generator_loss(fake_output)#attack_GAN.generator_loss(fake_output)
+      disc_loss = discriminator_loss(real_output, fake_output)#attack_GAN.discriminator_loss(real_output, fake_output)
 
     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
