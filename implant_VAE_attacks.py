@@ -12,7 +12,7 @@ from scipy.stats import multivariate_normal
 
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.utils import shuffle
+from sklearn.utils import shuffle, class_weight
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
@@ -214,7 +214,7 @@ vae = Model(inputs, [x_activated,y_activated], name='vae')
 
 # losses
 losses = {'generation_output': vae_loss(z_mean,z_log_var,inputs,x_activated),
-	      'classification_output': "mse"}
+	      'classification_output': "binary_crossentropy"}
 loss_weights = {'generation_output': gen_weight,
                 'classification_output': 1.0}
 
@@ -247,11 +247,13 @@ if __name__ == '__main__':
     window=window.reshape(1,x,y)
 
     # train
+    w=class_weight.compute_class_weight('balanced',np.unique(y_tr),y_tr)
     for n in np.arange(num_times):
         #vae.fit(X_tr,y_tr,epochs=ep_at_a_time,batch_size=b_s,validation_data=(X_val,y_val))
         vae.fit(X_tr,{'generation_output':y_tr,'classification_output':y_tr},
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
+            class_weight={'generation_output':w,'classification_output':w},
             validation_data=(X_val,{'generation_output':y_val,'classification_output':y_val}))
 
         # save visual progress
