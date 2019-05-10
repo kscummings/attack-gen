@@ -17,14 +17,14 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from tensorflow.keras.layers import Input, Lambda, Dense, BatchNormalization, Activation
-from tensorflow.keras.layers import Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
-from tensorflow.keras.models import Model, Sequential
-from tensorflow.keras.losses import mse, categorical_crossentropy, binary_crossentropy
-from tensorflow.keras.utils import plot_model, to_categorical
-from tensorflow.keras import backend as K
-from tensorflow.keras.regularizers import l2
-#from tensorflow.keras.optimizers import sgd
+from keras.layers import Input, Lambda, Dense, BatchNormalization, Activation
+from keras.layers import Dropout, Conv1D, Flatten, MaxPooling1D, UpSampling1D
+from keras.models import Model, Sequential
+from keras.losses import mse, sparse_categorical_crossentropy, binary_crossentropy
+from keras.utils import plot_model, to_categorical
+from keras import backend as K
+from keras.regularizers import l2
+from keras.optimizers import sgd
 #from tensorflow.keras.callbacks import EarlyStopping
 
 import seaborn as sns
@@ -46,21 +46,21 @@ CONSTANTS
 
 TEST_SIZE=0.3
 input_shape=(24,36)
-k_size=5
+K_SIZE=5
 conv=[60,80,36]
-resolution=2
+RESOLUTION=2
 dense=[200,160,480]
-C_CONV=50
-C_DENSE=10
-latent_dim=100
-pad_type='same'
-act_type='relu'
+c_conv=[70,30]
+c_dense=[100,50]
+LATENT_DIM=100
+PAD_TYPE='same'
+ACT_TYPE='relu'
 EPOCHS=10       #num epochs at a time
-num_times=3
-num_classes=1
+NUM_TIMES=3
+NUM_CLASSES=2
 BATCH_SIZE=128
-gen_weight=2.0      # how much more to weight generation acc. vs. class. acc.
-
+GEN_WEIGHT=2.0      # how much more to weight generation acc. vs. class. acc.
+LOSS='sparse_categorical_crossentropy' #mse, binary_crossentropy
 
 '''
 DATA
@@ -94,14 +94,14 @@ def sampling(args):
     epsilon = K.random_normal(shape=(batch, dim1, dim2))
     return z_mean + K.exp(0.5 * z_log_var) * epsilon # latent tensor
 
-def custom_loss(z_mean, z_log_var, inputs, outputs):
+def custom_loss(z_mean, z_log_var, inputs, outputs, input_shape):
     """
     define custom loss based on VAE loss and MSE
     with hopes that classes will be encoded separately in order for vae
     to successfully classify examples
     """
     reconstruction_loss = mse(inputs, outputs)
-    reconstruction_loss *= inputs.shape[1]
+    reconstruction_loss *= input_shape[1]
     reconstruction_loss = K.sum(reconstruction_loss,axis=-1)
 
     kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
@@ -120,12 +120,12 @@ def custom_loss(z_mean, z_log_var, inputs, outputs):
     # return a function
     return loss
 
-def vae_loss(z_mean, z_log_var, inputs, outputs):
+def vae_loss(z_mean, z_log_var, inputs, outputs, input_shape):
     '''
     loss for data generation branch
     '''
     reconstruction_loss = mse(inputs, outputs)
-    reconstruction_loss *= inputs.shape[1]
+    reconstruction_loss *= input_shape[1]
     reconstruction_loss = K.sum(reconstruction_loss,axis=-1)
 
     kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
@@ -145,45 +145,45 @@ def vae_loss(z_mean, z_log_var, inputs, outputs):
 
 conv[2] = input_shape[1]
 inputs = Input(shape=input_shape,name='encoder_input')
-conv_1 = Conv1D(filters = conv[0], kernel_size = k_size,
-         padding = pad_type, strides = 1)(inputs)
+conv_1 = Conv1D(filters = conv[0], kernel_size = K_SIZE,
+         padding = PAD_TYPE, strides = 1)(inputs)
 batch_1 = BatchNormalization(axis = 2)(conv_1)    # channels along last axis
-pool_1 = MaxPooling1D(pool_size = resolution,padding = pad_type)(batch_1)
-conv_2 = Conv1D(filters = conv[1], kernel_size = k_size, padding = pad_type,
+pool_1 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(batch_1)
+conv_2 = Conv1D(filters = conv[1], kernel_size = K_SIZE, padding = PAD_TYPE,
          strides = 1)(pool_1)
 batch_2 = BatchNormalization(axis = 2)(conv_2)
-pool_2 = MaxPooling1D(pool_size = resolution,padding = pad_type)(batch_2)
-dense_1 = Dense(units = dense[0], activation = act_type)(pool_2)
+pool_2 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(batch_2)
+dense_1 = Dense(units = dense[0], activation = ACT_TYPE)(pool_2)
 batch_3 = BatchNormalization(axis = 2)(dense_1)
-dense_2 = Dense(units = dense[1], activation = act_type)(batch_3)
+dense_2 = Dense(units = dense[1], activation = ACT_TYPE)(batch_3)
 batch_4 = BatchNormalization(axis = 2)(dense_2)
-z_mean_un = Dense(units = latent_dim)(batch_4)
-z_log_var_un = Dense(units = latent_dim, activation = act_type)(batch_4)
+z_mean_un = Dense(units = LATENT_DIM)(batch_4)
+z_log_var_un = Dense(units = LATENT_DIM, activation = ACT_TYPE)(batch_4)
 z_mean = BatchNormalization(axis = 2)(z_mean_un)
 z_log_var = BatchNormalization(axis = 2)(z_log_var_un)
 
 # use reparameterization trick to push the sampling out as input
 # note that "output_shape" isn't necessary with the TensorFlow backend
-# output shape is (batch_size, 6, latent_dim)
+# output shape is (batch_size, 6, LATENT_DIM)
 z = Lambda(function = sampling, name='z')([z_mean, z_log_var])
 
 # build decoder branch
 latent_inputs = Input(shape=K.int_shape(z)[1:], name='z_sampling')
-d_dense_1 = Dense(units=dense[1], activation=act_type)(latent_inputs)
+d_dense_1 = Dense(units=dense[1], activation=ACT_TYPE)(latent_inputs)
 d_batch_1 = BatchNormalization(axis=2)(d_dense_1)
-d_dense_2 = Dense(units=dense[0], activation=act_type)(d_batch_1)
+d_dense_2 = Dense(units=dense[0], activation=ACT_TYPE)(d_batch_1)
 d_batch_2 = BatchNormalization(axis=2)(d_dense_2)
-d_dense_3 = Dense(units=dense[2], activation=act_type)(d_batch_2)
+d_dense_3 = Dense(units=dense[2], activation=ACT_TYPE)(d_batch_2)
 d_batch_3 = BatchNormalization(axis=2)(d_dense_3)
-d_up_1 = UpSampling1D(size=resolution)(d_batch_3)
-d_conv_1 = Conv1D(filters=conv[0], kernel_size = k_size,
-           padding = pad_type, strides = 1)(d_up_1) #data_format = "channels_last"
+d_up_1 = UpSampling1D(size=RESOLUTION)(d_batch_3)
+d_conv_1 = Conv1D(filters=conv[0], kernel_size = K_SIZE,
+           padding = PAD_TYPE, strides = 1)(d_up_1) #data_format = "channels_last"
 d_batch_4 = BatchNormalization(axis=2)(d_conv_1)
-d_up_2 = UpSampling1D(size=resolution)(d_batch_4)
-d_mean_un = Conv1D(filters=conv[2], kernel_size = k_size,
-            padding = pad_type, strides = 1)(d_up_2) # data_format = "channels_last"
-d_log_var_un = Conv1D(filters=conv[2], kernel_size = k_size,
-               padding = pad_type, strides = 1)(d_up_2) #data_format = "channels_last"
+d_up_2 = UpSampling1D(size=RESOLUTION)(d_batch_4)
+d_mean_un = Conv1D(filters=conv[2], kernel_size = K_SIZE,
+            padding = PAD_TYPE, strides = 1)(d_up_2) # data_format = "channels_last"
+d_log_var_un = Conv1D(filters=conv[2], kernel_size = K_SIZE,
+               padding = PAD_TYPE, strides = 1)(d_up_2) #data_format = "channels_last"
 d_mean = BatchNormalization(axis = 2)(d_mean_un)
 d_log_var = BatchNormalization(axis=2)(d_log_var_un)
 
@@ -191,14 +191,20 @@ d_log_var = BatchNormalization(axis=2)(d_log_var_un)
 x_outputs = Lambda(function = sampling, name='output')([d_mean, d_log_var])
 
 # build classification branch
-c_conv = Conv1D(filters = C_CONV, kernel_size = k_size,
-         padding = pad_type, strides = 1)(latent_inputs)
-c_batch = BatchNormalization(axis = 2)(c_conv)    # channels along last axis
-c_pool = MaxPooling1D(pool_size = resolution,padding = pad_type)(c_batch)
-c_flat = Flatten()(c_pool)
-c_dense = Dense(units = C_DENSE, activation = act_type)(c_flat)
-c_batch = BatchNormalization(axis = 1)(c_dense)
-y_outputs = Dense(units = num_classes, activation = act_type)(c_batch)
+c_conv_1 = Conv1D(filters = c_conv[0], kernel_size = K_SIZE,
+         padding = PAD_TYPE, strides = 1)(latent_inputs)
+c_batch_1 = BatchNormalization(axis = 2)(c_conv_1)    # channels along last axis
+c_pool_1 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(c_batch_1)
+c_conv_2 = Conv1D(filters = c_conv[1], kernel_size = K_SIZE,
+         padding = PAD_TYPE, strides = 1)(c_pool_1)
+c_batch_2 = BatchNormalization(axis = 2)(c_conv_2)    # channels along last axis
+c_pool_2 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(c_batch_2)
+c_flat = Flatten()(c_pool_2)
+c_dense_1 = Dense(units = c_dense[0], activation = ACT_TYPE)(c_flat)
+c_batch_1 = BatchNormalization(axis = 1)(c_dense_1)
+c_dense_2 = Dense(units = c_dense[1], activation = ACT_TYPE)(c_batch_1)
+c_batch_2 = BatchNormalization(axis = 1)(c_dense_2)
+y_outputs = Dense(units = NUM_CLASSES, activation = ACT_TYPE)(c_batch_2)
 
 # instantiate subsidiary models
 encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
@@ -213,12 +219,12 @@ y_activated = Activation('softmax',name='classification_output')(y_outputs)
 vae = Model(inputs, [x_activated,y_activated], name='vae')
 
 # losses
-losses = {'generation_output': vae_loss(z_mean,z_log_var,inputs,x_activated),
-	      'classification_output': "binary_crossentropy"}
-loss_weights = {'generation_output': gen_weight,
+losses = {'generation_output': vae_loss(z_mean,z_log_var,inputs,x_activated,input_shape),
+	      'classification_output': LOSS}
+loss_weights = {'generation_output': GEN_WEIGHT,
                 'classification_output': 1.0}
-
-vae.compile(optimizer='adam',
+opt = sgd(lr=0.01,clipnorm=1.)
+vae.compile(optimizer=opt, #'adam'
             loss=losses,
             loss_weights=loss_weights)
 
@@ -248,7 +254,7 @@ if __name__ == '__main__':
 
     # train
     w=class_weight.compute_class_weight('balanced',np.unique(y_tr),y_tr)
-    for n in np.arange(num_times):
+    for n in np.arange(NUM_TIMES):
         #vae.fit(X_tr,y_tr,epochs=ep_at_a_time,batch_size=b_s,validation_data=(X_val,y_val))
         vae.fit(X_tr,{'generation_output':y_tr,'classification_output':y_tr},
             epochs=EPOCHS,
