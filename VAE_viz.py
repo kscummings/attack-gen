@@ -1,6 +1,7 @@
 """
 visualize training process of vae
 does generated data look like it should?
+yes! :)
 """
 from __future__ import absolute_import
 from __future__ import division

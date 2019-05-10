@@ -1,6 +1,6 @@
 """
-encode attack data w/ VAE and encourage separation
-use VAE to generate synthetic attack data
+encode attack data w/ VAE and encourage class separation in the encoding
+use VAE to generate labeled synthetic attack data
 
 multiple losses: https://www.pyimagesearch.com/2018/06/04/keras-multiple-outputs-and-multiple-losses/
 """
@@ -255,83 +255,6 @@ y_outputs = classifier(encoder(inputs)[2])
 y_activated = Activation('softmax',name='classification')(y_outputs)
 
 
-# hide old code that i'm scared to throw away and idk how to actually use verison control...
-for _ in range(47):
-    # build encoder
-    #
-    # conv[2] = input_shape[1]
-    # inputs = Input(shape=input_shape,name='encoder_input')
-    # conv_1 = Conv1D(filters = conv[0], kernel_size = K_SIZE,
-    #          padding = PAD_TYPE, strides = 1)(inputs)
-    # batch_1 = BatchNormalization(axis = 2)(conv_1)    # channels along last axis
-    # pool_1 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(batch_1)
-    # conv_2 = Conv1D(filters = conv[1], kernel_size = K_SIZE, padding = PAD_TYPE,
-    #          strides = 1)(pool_1)
-    # batch_2 = BatchNormalization(axis = 2)(conv_2)
-    # pool_2 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(batch_2)
-    # dense_1 = Dense(units = dense[0], activation = ACT_TYPE)(pool_2)
-    # batch_3 = BatchNormalization(axis = 2)(dense_1)
-    # dense_2 = Dense(units = dense[1], activation = ACT_TYPE)(batch_3)
-    # batch_4 = BatchNormalization(axis = 2)(dense_2)
-    # z_mean_un = Dense(units = LATENT_DIM)(batch_4)
-    # z_log_var_un = Dense(units = LATENT_DIM, activation = ACT_TYPE)(batch_4)
-    # z_mean = BatchNormalization(axis = 2)(z_mean_un)
-    # z_log_var = BatchNormalization(axis = 2)(z_log_var_un)
-    #
-    # # use reparameterization trick to push the sampling out as input
-    # # note that "output_shape" isn't necessary with the TensorFlow backend
-    # # output shape is (batch_size, 6, LATENT_DIM)
-    # z = Lambda(function = sampling, name='z')([z_mean, z_log_var])
-    #
-    # # build decoder branch
-    # latent_inputs = Input(shape=K.int_shape(z)[1:], name='z_sampling')
-    # d_dense_1 = Dense(units=dense[1], activation=ACT_TYPE)(latent_inputs)
-    # d_batch_1 = BatchNormalization(axis=2)(d_dense_1)
-    # d_dense_2 = Dense(units=dense[0], activation=ACT_TYPE)(d_batch_1)
-    # d_batch_2 = BatchNormalization(axis=2)(d_dense_2)
-    # d_dense_3 = Dense(units=dense[2], activation=ACT_TYPE)(d_batch_2)
-    # d_batch_3 = BatchNormalization(axis=2)(d_dense_3)
-    # d_up_1 = UpSampling1D(size=RESOLUTION)(d_batch_3)
-    # d_conv_1 = Conv1D(filters=conv[0], kernel_size = K_SIZE,
-    #            padding = PAD_TYPE, strides = 1)(d_up_1) #data_format = "channels_last"
-    # d_batch_4 = BatchNormalization(axis=2)(d_conv_1)
-    # d_up_2 = UpSampling1D(size=RESOLUTION)(d_batch_4)
-    # d_mean_un = Conv1D(filters=conv[2], kernel_size = K_SIZE,
-    #             padding = PAD_TYPE, strides = 1)(d_up_2) # data_format = "channels_last"
-    # d_log_var_un = Conv1D(filters=conv[2], kernel_size = K_SIZE,
-    #                padding = PAD_TYPE, strides = 1)(d_up_2) #data_format = "channels_last"
-    # d_mean = BatchNormalization(axis = 2)(d_mean_un)
-    # d_log_var = BatchNormalization(axis=2)(d_log_var_un)
-    #
-    # # join the branches by generating random normals. this is our reconstruction
-    # x_outputs = Lambda(function = sampling, name='output')([d_mean, d_log_var])
-    #
-    # # build classification branch
-    # c_conv_1 = Conv1D(filters = c_conv[0], kernel_size = K_SIZE,
-    #          padding = PAD_TYPE, strides = 1)(latent_inputs)
-    # c_batch_1 = BatchNormalization(axis = 2)(c_conv_1)    # channels along last axis
-    # c_pool_1 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(c_batch_1)
-    # c_conv_2 = Conv1D(filters = c_conv[1], kernel_size = K_SIZE,
-    #          padding = PAD_TYPE, strides = 1)(c_pool_1)
-    # c_batch_2 = BatchNormalization(axis = 2)(c_conv_2)    # channels along last axis
-    # c_pool_2 = MaxPooling1D(pool_size = RESOLUTION,padding = PAD_TYPE)(c_batch_2)
-    # c_flat = Flatten()(c_pool_2)
-    # c_dense_1 = Dense(units = c_dense[0], activation = ACT_TYPE)(c_flat)
-    # c_batch_1 = BatchNormalization(axis = 1)(c_dense_1)
-    # c_dense_2 = Dense(units = c_dense[1], activation = ACT_TYPE)(c_batch_1)
-    # c_batch_2 = BatchNormalization(axis = 1)(c_dense_2)
-    # y_outputs = Dense(units = NUM_CLASSES, activation = ACT_TYPE)(c_batch_2)
-    #
-    # # instantiate subsidiary models
-    # encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
-    # decoder = Model(latent_inputs, [d_mean,d_log_var,x_outputs], name='decoder')
-    # classifier = Model(latent_inputs, y_outputs, name='classifier')
-
-
-'''
-TRAIN
-'''
-
 '''
 VISUALIZE
 '''
@@ -342,41 +265,66 @@ def get_prediction(vae_pred):
     '''
     return (vae_pred[1][:,1]>=0.5)+0
 
-def viz(want_to_see, window, loss_df):
+def viz(output_dir,
+        want_to_see,
+        window,
+        loss_df,
+        checkins,
+        epochs,
+        see_from=0):
     '''
     visualize: periodic reconstructions of sensor readings
     inputs
+    #   output_dir - directory to save files
+    #   loss_dir - subdirectory to save loss plots
     #   want_to_see - show plots in real time? otherwise just write to disc
+    #   window - set of windows to visualize, collected from train fcn
+    #   loss_df - loss results
+    #   see_from - first observation to visualize in loss
     '''
-    lb, ub = np.min(window), np.max(window)
+    # set up subsidiary directories
+    loss_dir=os.path.join(output_dir,"loss_plots")
+    im_dir=os.path.join(output_dir,"window_heatmaps")
+    os.makedirs(im_dir,exist_ok=True)
+    os.makedirs(loss_dir,exist_ok=True)
 
+    # first heatmap
+    lb, ub = np.min(window), np.max(window)
     fig, ax = plt.subplots()
     sns.heatmap(window[0],vmin=lb, vmax=ub) # crashes ..
     plt.savefig(os.path.join(im_dir,'original_window.png'))
 
     # look at windows
-    for n in np.arange(1,num_times+1):
-
+    for n in np.arange(1,checkins+1):
         fig, ax = plt.subplots()
         window_pred=window[n]
         sns.heatmap(window_pred,vmin=lb, vmax=ub)
-        plt.savefig(os.path.join(im_dir,'reconstructed_at_ep_{:04d}.png'.format(n*ep_at_a_time)))
+        plt.savefig(os.path.join(im_dir,'reconstructed_at_ep_{:04d}.png'.format(n*epochs)))
 
     # look at loss
     fig, ax = plt.subplots()
-    ax.plot(loss_df['loss'], '-b', label='Training loss')
-    ax.plot(loss_df['val_loss'], '--r', label='Validation loss')
+    ax.plot(loss_df['loss'][see_from:], '-b', label='Training loss')
+    ax.plot(loss_df['val_loss'][see_from:], '--r', label='Validation loss')
     ax.legend(loc='upper right', frameon=False)
-    plt.savefig(os.path.join(dir,'loss.png'))
+    plt.savefig(os.path.join(loss_dir,'loss.png'))
 
-    # classification and generation loss separately
+    # generation loss
     fig, ax = plt.subplots()
-    ax.plot(loss_df['loss'], '-b', label='Training loss')
-    ax.plot(loss_df['val_loss'], '--r', label='Validation loss')
+    ax.plot(loss_df['generation_loss'][see_from:], '-b', label='Training loss')
+    ax.plot(loss_df['val_generation_loss'][see_from:], '--r', label='Validation loss')
     ax.legend(loc='upper right', frameon=False)
-    plt.savefig(os.path.join(dir,'loss.png'))
+    plt.title('Generation loss')
+    plt.savefig(os.path.join(loss_dir,'generation_loss.png'))
 
-    plt.show() if want_to_see
+    # classification loss
+    fig, ax = plt.subplots()
+    ax.plot(loss_df['classification_loss'][see_from:], '-b', label='Training loss')
+    ax.plot(loss_df['val_classification_loss'][see_from:], '--r', label='Validation loss')
+    ax.legend(loc='upper right', frameon=False)
+    plt.title('Classification loss')
+    plt.savefig(os.path.join(loss_dir,'classification_loss.png'))
+
+    plt.show() if want_to_see else True
 
 
 '''
@@ -387,6 +335,7 @@ def train_vae(output_dir,
               gen_weight,
               checkins,
               epochs,
+              see_from=10,
               want_to_see=False,
               batch_size=256,
               class_loss='sparse_categorical_crossentropy'):
@@ -401,10 +350,8 @@ def train_vae(output_dir,
     #   batch_size - num. obs. to train at a time
     #   class_loss - loss to use for classification branch
     '''
-    # set up directories
-    image_dir=os.path.join(dir,'viz')
-    os.makedirs(dir,exist_ok=True)
-    os.makedirs(image_dir,exist_ok=True)
+    # set up directory
+    os.makedirs(output_dir,exist_ok=True)
 
     # instantiate
     vae = Model(inputs, [x_activated,y_activated], name='vae')
@@ -430,7 +377,7 @@ def train_vae(output_dir,
                 validation_data=(X_val,{'generation':y_val,'classification':y_val}))
 
         # save visual progress
-        window_pred=vae.predict(window[0].reshape(1,x,y))[0]
+        window_pred=vae.predict(window[0].reshape(1,w1,w2))[0]
         window=np.concatenate((window,window_pred),axis=0)
 
         # save loss
@@ -441,23 +388,32 @@ def train_vae(output_dir,
         loss_history = (history if n==0 else np.concatenate((loss_history,history),axis=0))
 
     ##### save everything
-    vae.save_weights(os.path.join(dir,'vae.h5'))
-    encoder.save_weights(os.path.join(dir,'encoder.h5'))
-    decoder.save_weights(os.path.join(dir,'decoder.h5'))
+    vae.save_weights(os.path.join(output_dir,'vae.h5'))
+    encoder.save_weights(os.path.join(output_dir,'encoder.h5'))
+    decoder.save_weights(os.path.join(output_dir,'decoder.h5'))
 
-    np.save(os.path.join(dir,'window.npy'),window)
+    np.save(os.path.join(output_dir,'window.npy'),window)
 
     loss_df = pd.DataFrame()
     loss_df['loss'],loss_df['val_loss']=loss_history[:,0],loss_history[:,1]
     loss_df['classification_loss'],loss_df['val_classification_loss']=loss_history[:,2],loss_history[:,3]
     loss_df['generation_loss'],loss_df['val_generation_loss']=loss_history[:,4],loss_history[:,5]
 
-    loss_df.to_csv(os.path.join(dir,'loss_results.csv'), index=False)
+    loss_df.to_csv(os.path.join(output_dir,'loss_results.csv'), index=False)
 
     # visualize windows and loss
-    viz(want_to_see, window, loss_df)
+    viz(output_dir,want_to_see,window,loss_df,checkins,epochs,see_from)
 
 if __name__ == '__main__':
     '''
-    train VAE w/ weighted MSE
+    train VAE
     '''
+    # does this script work? verdict: yes! :)
+    train_vae(output_dir="test",
+              gen_weight=0.5,
+              checkins=4,
+              epochs=50,
+              see_from=10,
+              want_to_see=True,
+              batch_size=256,
+              class_loss='sparse_categorical_crossentropy')

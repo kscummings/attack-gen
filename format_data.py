@@ -10,10 +10,6 @@ import pandas as pd
 import numpy as np
 
 
-# TODO: Need raw data in directory called 'batadal'
-# TODO: Write R script to transform dataset04 labels (meh)?
-
-
 '''
 HELPER FUNCTIONS
 '''
