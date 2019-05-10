@@ -331,10 +331,12 @@ def viz(output_dir,
 TRAIN
 '''
 
-def train_vae(output_dir,
+def train_vae(data,
+              output_dir,
               gen_weight,
               checkins,
               epochs,
+              class_weight=1,
               see_from=10,
               want_to_see=False,
               batch_size=256,
@@ -350,15 +352,15 @@ def train_vae(output_dir,
     #   batch_size - num. obs. to train at a time
     #   class_loss - loss to use for classification branch
     '''
-    # set up directory
     os.makedirs(output_dir,exist_ok=True)
+    (X_tr,y_tr,X_val,y_val)=data
 
     # instantiate
     vae = Model(inputs, [x_activated,y_activated], name='vae')
 
     # model components
     losses={'generation': vae_loss(z_mean,z_log_var,inputs,x_activated,input_shape),'classification': class_loss}
-    loss_weights={'generation': gen_weight,'classification': 1.0}
+    loss_weights={'generation': gen_weight,'classification': class_weight}
     opt=sgd(lr=0.01,clipnorm=1.)
     vae.compile(optimizer=opt,loss=losses,loss_weights=loss_weights)
     w=class_weight.compute_class_weight('balanced',np.unique(y_tr),y_tr)
@@ -409,11 +411,12 @@ if __name__ == '__main__':
     train VAE
     '''
     # does this script work? verdict: yes! :)
-    train_vae(output_dir="test",
-              gen_weight=0.5,
-              checkins=4,
-              epochs=50,
+    train_vae(data=(X_tr,y_tr,X_val,y_val),
+              output_dir="test",
+              gen_weight=GEN_WEIGHT,
+              checkins=NUM_TIMES,
+              epochs=EPOCHS,
               see_from=10,
               want_to_see=True,
-              batch_size=256,
+              batch_size=BATCH_SIZE,
               class_loss='sparse_categorical_crossentropy')
