@@ -8,7 +8,7 @@ set up virtualenv w/ tensorflow version 2.0.0 alpha
 bookmark:
 https://stackoverflow.com/questions/34977388/matplotlib-runtimeerror-python-is-not-installed-as-a-framework
 
-doesn't work--gradients always vanish :/ 
+doesn't work--gradients always vanish :/
 '''
 
 
