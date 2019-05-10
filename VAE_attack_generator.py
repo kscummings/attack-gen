@@ -336,7 +336,7 @@ def train_vae(data,
               gen_weight,
               checkins,
               epochs,
-              class_weight=1,
+              classification_weight=1,
               see_from=10,
               want_to_see=False,
               batch_size=256,
@@ -360,7 +360,7 @@ def train_vae(data,
 
     # model components
     losses={'generation': vae_loss(z_mean,z_log_var,inputs,x_activated,input_shape),'classification': class_loss}
-    loss_weights={'generation': gen_weight,'classification': class_weight}
+    loss_weights={'generation': gen_weight,'classification': classification_weight}
     opt=sgd(lr=0.01,clipnorm=1.)
     vae.compile(optimizer=opt,loss=losses,loss_weights=loss_weights)
     w=class_weight.compute_class_weight('balanced',np.unique(y_tr),y_tr)

@@ -1,7 +1,7 @@
 '''
 select best loss weight
 '''
-from sklearn.utils import train_test_split
+from sklearn.model_selection import train_test_split
 
 import os
 import numpy as np
@@ -15,13 +15,14 @@ from VAE_attack_generator import train_vae
 CONSTANTS
 '''
 
-NUM_TIMES=6
-EPOCHS=50
+NUM_TIMES=2
+EPOCHS=5
 BATCH_SIZE=256
-SEE_FROM=10
+SEE_FROM=0
 WANT_TO_SEE=False
+TEST_SIZE=0.3
 MOTHER_DIR="loss_weight_selection"
-SEARCH_LIST=[0,0.1,0.2,0.25,0.3333,0.5,1,2]
+SEARCH_LIST=[2]#[0,0.1,0.2,0.25,0.3333,0.5,1,2]
 
 '''
 SEARCH
@@ -40,6 +41,7 @@ def search(data,gen_weight,get_baseline=True):
 
     # save data
     data_dir=os.path.join(MOTHER_DIR, "data")
+    os.makedirs(data_dir,exist_ok=True)
     np.save(os.path.join(data_dir,"train"),X_tr)
     np.save(os.path.join(data_dir,"test"),X_val)
     np.save(os.path.join(data_dir,"train_response"),y_tr)
@@ -57,18 +59,18 @@ def search(data,gen_weight,get_baseline=True):
         train_vae(data=(X_tr,y_tr,X_val,y_val),
                   output_dir=output_dir,
                   gen_weight=1,
-                  class_weight=0,
+                  classification_weight=0,
                   checkins=NUM_TIMES,
                   epochs=EPOCHS,
                   see_from=SEE_FROM,
                   want_to_see=WANT_TO_SEE,
                   batch_size=BATCH_SIZE)
         res=pd.read_csv(os.path.join(output_dir,"loss_results.csv"))
-        results.iloc[g][:2]=np.array([1,0])
-        results.iloc[g][2:]=np.array(res.iloc[len(res)-1])
+        results.iloc[0][:2]=np.array([1,0])
+        results.iloc[0][2:]=np.array(res.iloc[len(res)-1])
         results.to_csv(os.path.join(MOTHER_DIR,"gen_weight_search.csv"), index=False) # write so far
 
-    # search for best gen weight 
+    # search for best gen weight
     for g in np.arange(len(gen_weight)):
         print("On trial for gen weight {}".format(gen_weight[g]))
         output_dir=os.path.join(MOTHER_DIR,"gen_weight_{}".format(gen_weight[g]))
@@ -82,8 +84,8 @@ def search(data,gen_weight,get_baseline=True):
                   batch_size=BATCH_SIZE)
 
         res=pd.read_csv(os.path.join(output_dir,"loss_results.csv"))
-        results.iloc[g][:2]=np.array([gen_weight[g],1])
-        results.iloc[g][2:]=np.array(res.iloc[len(res)-1])
+        results.iloc[g+1][:2]=np.array([gen_weight[g],1])
+        results.iloc[g+1][2:]=np.array(res.iloc[len(res)-1])
         results.to_csv(os.path.join(MOTHER_DIR,"gen_weight_search.csv"), index=False) # write so far
 
 
