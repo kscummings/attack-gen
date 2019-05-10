@@ -15,14 +15,14 @@ from VAE_attack_generator import train_vae
 CONSTANTS
 '''
 
-NUM_TIMES=2
-EPOCHS=5
+NUM_TIMES=6
+EPOCHS=50
 BATCH_SIZE=256
-SEE_FROM=0
+SEE_FROM=10
 WANT_TO_SEE=False
 TEST_SIZE=0.3
 MOTHER_DIR="loss_weight_selection"
-SEARCH_LIST=[2]#[0,0.1,0.2,0.25,0.3333,0.5,1,2]
+SEARCH_LIST=[0.1,0.2,0.25,0.3333,0.5,1,2]
 
 '''
 SEARCH
@@ -93,7 +93,7 @@ def main():
     # control for dataset
     (_,_),(X,y),names=format_data.get_rolled_data()
     X_tr,X_val,y_tr,y_val=train_test_split(X,y,stratify=y,test_size=TEST_SIZE,shuffle=True)
-    search((X_tr,y_tr,X_val,y_val),SEARCH_LIST)
+    search((X_tr,y_tr,X_val,y_val),SEARCH_LIST,get_baseline=False)
 
 if __name__ == '__main__':
     main()

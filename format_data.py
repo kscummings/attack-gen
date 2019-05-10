@@ -9,9 +9,11 @@ from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
 
+import VAE_attack_generator
 
 '''
 HELPER FUNCTIONS
+import unaltered data
 '''
 
 def roll(x, y, window_length):
@@ -68,3 +70,23 @@ def get_rolled_attack_data(std_pct=0.1,window_length=24):
     """
     (_, _), (attack, y_attack), _ = get_rolled_data(std_pct,window_length)
     return attack[y_attack==1,:]
+
+'''
+GENERATE SYNTHETIC DATA
+'''
+
+def gen_data(weights,
+             clean_only=False):
+    '''
+    load in VAE and generate new data
+    inputs
+    #   weights - model file that points to model weights
+    #   clean_only - whether i want to generate clean readings only
+    '''
+    vae=VAE_attack_generator.get_vae()
+    vae.load_weights(weights)
+    #TODO: generate data
+
+# function to manually implant attacks, given model-agnostic input data
+
+# wrapper to manually implant attacks in synthetic "clean" data

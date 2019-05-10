@@ -219,8 +219,22 @@ def build_classifier(latent_input_shape=(6,100),
     # classifier
     return Model(latent_inputs, y_outputs, name='classifier')
 
+def get_vae():
+    '''
+    get model architecture so we can load weights in format_data
+    '''
+    inputs=Input(shape=input_shape,name='encoder_input')
+    encoder=build_encoder(inputs)
+    decoder=build_decoder()
+    classifier=build_classifier()
+    x_outputs = decoder(encoder(inputs)[2])[2]
+    x_activated = Activation('linear',name='generation')(x_outputs)
+    y_outputs = classifier(encoder(inputs)[2])
+    y_activated = Activation('softmax',name='classification')(y_outputs)
+    return Model(inputs, [x_activated,y_activated], name='vae')
 
-#need to build encoder globally b/c of custom loss inputs
+
+#need to build encoder globally so custom loss can access inputs
 inputs = Input(shape=input_shape,name='encoder_input')
 conv1 = Conv1D(filters = conv[0], kernel_size = k_size,
          padding = pad_type, strides = 1)(inputs)
