@@ -88,20 +88,21 @@ def synth_attacks(decoder_weights,
     #   num_obs - number of attacks to generate
     #   include_attacks - whether i want to generate attacks too
     '''
-    noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
 
-    decoder=VAE_attack_generator.build_decoder()
+    noise=np.random.normal(size=(int(num_obs),latent_input_shape[0],latent_input_shape[1]))
+
+    decoder=build_decoder()#VAE_attack_generator.build_decoder()
     decoder.load_weights(decoder_weights)
     synthetic_features=decoder.predict(noise)[2]
 
-    classifier=VAE_attack_generator.build_classifier()
+    classifier=build_classifier()#VAE_attack_generator.build_classifier()
     classifier.load_weights(classifier_weights)
     synthetic_labels=(classifier.predict(noise)[:,1]>=0.5)+0
 
     # only want attacks
     num_left=int(num_obs-sum(synthetic_labels))
     while num_left > 0:
-        noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
+        noise=np.random.normal(size=(int(num_obs),latent_input_shape[0],latent_input_shape[1]))
 
         # new observations to choose from, only keep new attacks
         new_synth_lab=(classifier.predict(noise)[:,1]>=0.5)+0
@@ -174,7 +175,7 @@ def manual_attacks(x,
 
 def synth(num_obs,
           decoder_weights,
-          manual_attacks=True,
+          man_att=True,
           latent_input_shape=(6,100)):
     '''
     generate clean synthetic data, with option to manually convert to attacks
@@ -186,22 +187,19 @@ def synth(num_obs,
     #   synthetic attacks
     '''
     (_,_),(_,_),names=get_rolled_data()
+    noise=np.random.normal(size=(int(num_obs),latent_input_shape[0],latent_input_shape[1]))
 
-    noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
-
-    decoder=VAE_attack_generator.build_decoder()
+    decoder=build_decoder()#VAE_attack_generator.build_decoder()
     decoder.load_weights(decoder_weights)
     clean=decoder.predict(noise)[2]
 
-    return manual_attacks(clean,names) if manual_attacks else clean
+    return manual_attacks(clean,names) if man_att else clean
 
 def get_synthetic_training_data(attack_decoder_weights,
                                 classifier_weights,
                                 clean_decoder_weights,
-                                synth_attacks,
-                                manual_attacks,
-                                synth_clean,
-                                attack_prop=0.5,
+                                implant_synth_attacks,
+                                implant_manual_attacks,
                                 latent_input_shape=(6,100)):
     '''
     generate synthetic data with desired proportion and type of attacks
@@ -223,6 +221,7 @@ def get_synthetic_training_data(attack_decoder_weights,
     #       clean_decoder_weights
     #       synth_attacks - boolean, generate attacks from decoder?
     #       manual_attacks - boolean, generate manual attacks?
+    #       latent_input_shape - dimensions of encoded space
     '''
 
     (X_clean,y_clean),(X,y),names=get_rolled_data()
@@ -233,8 +232,9 @@ def get_synthetic_training_data(attack_decoder_weights,
 
     # get attack augmentations
     # not the most efficient way to code this but ya girl is rushing to the finish line!
-    num_attacks_left=np.ceil(num_obs*attack_prop-sum(y))
-    if synth_attacks & manual_attacks:
+    num_clean=len(X)-sum(y)
+    num_attacks_left=np.ceil(num_clean-sum(y)) # want it to be balanced
+    if implant_synth_attacks & implant_manual_attacks:
         num_synth_attacks=np.ceil(num_attacks_left/2)
         X_synthetic=synth_attacks(decoder_weights=attack_decoder_weights,
                                   classifier_weights=classifier_weights,
@@ -242,10 +242,10 @@ def get_synthetic_training_data(attack_decoder_weights,
                                   latent_input_shape=latent_input_shape)
         X_manual=synth(num_obs=num_attacks_left-num_synth_attacks,
                        decoder_weights=clean_decoder_weights,
-                       manual_attacks=True,
+                       man_att=True,
                        latent_input_shape=latent_input_shape)
         X_attack=np.concatenate((X_synthetic,X_manual),axis=0)
-    elif synth_attacks:
+    elif implant_synth_attacks:
         X_attack=synth_attacks(decoder_weights=attack_decoder_weights,
                                classifier_weights=classifier_weights,
                                num_obs=num_attacks_left,
@@ -253,11 +253,11 @@ def get_synthetic_training_data(attack_decoder_weights,
     else: #only manual-on-synth attacks default
         X_attack=synth(num_obs=num_attacks_left,
                        decoder_weights=clean_decoder_weights,
-                       manual_attacks=True,
+                       man_att=True,
                        latent_input_shape=latent_input_shape)
 
     # append synthetic attacks to training set
     X=np.concatenate((X,X_attack),axis=0)
-    y=np.concatenate((y,np.ones(num_attacks_left)))
+    y=np.concatenate((y,np.ones(int(num_attacks_left))))
 
     return (X,y)
