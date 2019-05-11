@@ -90,11 +90,11 @@ def synth_attacks(decoder_weights,
     '''
     noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
 
-    decoder=VAE_attack_generator.build_decoder()
+    decoder=build_decoder()#VAE_attack_generator.build_decoder()
     decoder.load_weights(decoder_weights)
     synthetic_features=decoder.predict(noise)[2]
 
-    classifier=VAE_attack_generator.build_classifier()
+    classifier=build_classifier()#VAE_attack_generator.build_classifier()
     classifier.load_weights(classifier_weights)
     synthetic_labels=(classifier.predict(noise)[:,1]>=0.5)+0
 
@@ -114,7 +114,7 @@ def synth_attacks(decoder_weights,
         n = (num_left if len(new_synth_feat) >= num_left else len(new_synth_feat))
 
         replace=np.random.choice(clean_locations,n,replace=False)
-        synthetic_features[replace]=new_synth_feat
+        synthetic_features[replace]=new_synth_feat[:n] # might have generated too much
         synthetic_labels[replace]=np.ones(n)
 
         num_left -= n
@@ -261,3 +261,5 @@ def get_synthetic_training_data(attack_decoder_weights,
     # append synthetic attacks to training set
     X=np.concatenate((X,X_attack),axis=0)
     y=np.concatenate((y,np.ones(num_attacks_left)))
+
+    return (X,y)
