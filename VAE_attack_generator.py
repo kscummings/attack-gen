@@ -309,9 +309,9 @@ def viz(output_dir,
     plt.savefig(os.path.join(im_dir,'original_window.png'))
 
     # look at windows
-    for n in np.arange(1,checkins+1):
+    for n in np.arange(checkins+1):
         fig, ax = plt.subplots()
-        window_pred=window[n]
+        window_pred=window[n+1]
         sns.heatmap(window_pred,vmin=lb, vmax=ub)
         plt.savefig(os.path.join(im_dir,'reconstructed_at_ep_{:04d}.png'.format(n*epochs)))
 
@@ -384,6 +384,10 @@ def train_vae(data,
     (w1,w2)=window.shape
     window=window.reshape(1,w1,w2)
 
+    # look at initial prediction, pre-training
+    window_pred=vae.predict(window[0].reshape(1,w1,w2))[0]
+    window=np.concatenate((window,window_pred),axis=0)
+
     # train and periodically check in
     for n in np.arange(checkins):
 
@@ -407,6 +411,7 @@ def train_vae(data,
     vae.save_weights(os.path.join(output_dir,'vae.h5'))
     encoder.save_weights(os.path.join(output_dir,'encoder.h5'))
     decoder.save_weights(os.path.join(output_dir,'decoder.h5'))
+    classifier.save_weights(os.path.join(output_dir,'classifier.h5'))
 
     np.save(os.path.join(output_dir,'window.npy'),window)
 

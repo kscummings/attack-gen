@@ -7,9 +7,8 @@ import os
 import numpy as np
 import pandas as pd
 
-import format_data
 import VAE_attack_generator
-from VAE_attack_generator import train_vae
+import format_data
 
 '''
 CONSTANTS
@@ -22,7 +21,7 @@ SEE_FROM=10
 WANT_TO_SEE=False
 TEST_SIZE=0.3
 MOTHER_DIR="loss_weight_selection"
-SEARCH_LIST=[0.1,0.2,0.25,0.3333,0.5,1,2]
+SEARCH_LIST=[0,0.1,0.2,0.25,0.3333,0.5,1,2]
 
 '''
 SEARCH
@@ -48,7 +47,7 @@ def search(data,gen_weight,get_baseline=True):
     np.save(os.path.join(data_dir,"test_response"),y_val)
 
     # start results
-    temp = (np.zeros((len(gen_weight)+1,8)) if get_baseline else np.zeros((len(gen_weight),6)))
+    temp = (np.zeros((len(gen_weight)+1,8)) if get_baseline else np.zeros((len(gen_weight),8)))
     results=pd.DataFrame(temp,columns=['gen_weight','class_weight','loss','val_loss',
         'class_loss','val_class_loss','gen_loss','val_gen_loss'])
 
@@ -56,7 +55,7 @@ def search(data,gen_weight,get_baseline=True):
     if get_baseline:
         print("getting baseline")
         output_dir=os.path.join(MOTHER_DIR,"vae_baseline")
-        train_vae(data=(X_tr,y_tr,X_val,y_val),
+        VAE_attack_generator.train_vae(data=(X_tr,y_tr,X_val,y_val),
                   output_dir=output_dir,
                   gen_weight=1,
                   classification_weight=0,
@@ -74,7 +73,7 @@ def search(data,gen_weight,get_baseline=True):
     for g in np.arange(len(gen_weight)):
         print("On trial for gen weight {}".format(gen_weight[g]))
         output_dir=os.path.join(MOTHER_DIR,"gen_weight_{}".format(gen_weight[g]))
-        train_vae(data=(X_tr,y_tr,X_val,y_val),
+        VAE_attack_generator.train_vae(data=(X_tr,y_tr,X_val,y_val),
                   output_dir=output_dir,
                   gen_weight=gen_weight[g],
                   checkins=NUM_TIMES,
@@ -93,7 +92,7 @@ def main():
     # control for dataset
     (_,_),(X,y),names=format_data.get_rolled_data()
     X_tr,X_val,y_tr,y_val=train_test_split(X,y,stratify=y,test_size=TEST_SIZE,shuffle=True)
-    search((X_tr,y_tr,X_val,y_val),SEARCH_LIST,get_baseline=False)
+    search((X_tr,y_tr,X_val,y_val),SEARCH_LIST,get_baseline=True)
 
 if __name__ == '__main__':
     main()
