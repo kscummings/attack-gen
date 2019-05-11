@@ -174,11 +174,12 @@ def manual_attacks(features,
     return features
 
 
-def manual_attacks_on_synth(num_obs,
-                            decoder_weights,
-                            latent_input_shape=(6,100)):
+def synth(num_obs,
+          decoder_weights,
+          manual_attacks=True,
+          latent_input_shape=(6,100)):
     '''
-    generate clean synthetic data and manually convert to attacks
+    generate clean synthetic data, with option to manually convert to attacks
     inputs
     #   num_obs - desired number of attacks
     #   decoder_weights - path to h5 file with decoder weights
@@ -194,12 +195,16 @@ def manual_attacks_on_synth(num_obs,
     decoder.load_weights(decoder_weights)
     clean=decoder.predict(noise)[2]
 
-    return manual_attacks(clean,names)
+    return manual_attacks(clean,names) if manual_attacks else clean
 
-def get_synthetic_training_data(synth_attacks,
+def get_synthetic_training_data(attack_decoder_weights,
+                                classifier_weights,
+                                clean_decoder_weights,
+                                synth_attacks,
                                 manual_attacks,
                                 synth_clean,
-                                attack_prop=0.5):
+                                attack_prop=0.5,
+                                latent_input_shape=(6,100)):
     '''
     generate synthetic data with desired proportion and type of attacks
     always generates synthetic data on top of batadal03
@@ -215,14 +220,44 @@ def get_synthetic_training_data(synth_attacks,
     (1)     manual attacks on synthetic data or generated attacks or both
     (2)     implant in raw or generated clean data
     inputs
+    #       attack_decoder_weights - path to h5 file with attack decoder weights
+    #       classifier_weights
+    #       clean_decoder_weights
     #       synth_attacks - boolean, generate attacks from decoder?
     #       manual_attacks - boolean, generate manual attacks?
-    #       synth_clean - boolean, transform clean data with decoder?
     '''
 
-    (clean,y_clean),(X,y),names=get_rolled_data()
-    num_obs=len(clean)+len(X)
-    num_attacks=np.ceil(num_obs*attack_prop)
+    (X_clean,y_clean),(X,y),names=get_rolled_data()
 
+    # include every clean observation regardless
+    X=np.concatenate((X,X_clean),axis=0)
+    y=np.concatenate((y,y_clean))
+
+    # get attack augmentations
+    # not the most efficient way to code this but ya girl is rushing to the finish line!
+    num_attacks_left=np.ceil(num_obs*attack_prop-sum(y))
     if synth_attacks & manual_attacks:
-        
+        num_synth_attacks=np.ceil(num_attacks_left/2)
+        X_synthetic=synth_attacks(decoder_weights=attack_decoder_weights,
+                                  classifier_weights=classifier_weights,
+                                  num_obs=num_synth_attacks,
+                                  latent_input_shape=latent_input_shape)
+        X_manual=synth(num_obs=num_attacks_left-num_synth_attacks,
+                       decoder_weights=clean_decoder_weights,
+                       manual_attacks=True,
+                       latent_input_shape=latent_input_shape)
+        X_attack=np.concatenate((X_synthetic,X_manual),axis=0)
+    elif synth_attacks:
+        X_attack=synth_attacks(decoder_weights=attack_decoder_weights,
+                               classifier_weights=classifier_weights,
+                               num_obs=num_attacks_left,
+                               latent_input_shape=latent_input_shape)
+    else: #only manual-on-synth attacks default
+        X_attack=synth(num_obs=num_attacks_left,
+                       decoder_weights=clean_decoder_weights,
+                       manual_attacks=True,
+                       latent_input_shape=latent_input_shape)
+
+    # append synthetic attacks to training set
+    X=np.concatenate((X,X_attack),axis=0)
+    y=np.concatenate((y,np.ones(num_attacks_left)))
