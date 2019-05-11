@@ -1,5 +1,6 @@
 """
-script to treat data
+script to treat data:
+import, roll, generate, and manually change
 """
 
 from __future__ import absolute_import, division, print_function, unicode_literals
@@ -75,60 +76,55 @@ def get_rolled_attack_data(std_pct=0.1,window_length=24):
 GENERATE SYNTHETIC DATA
 '''
 
-def gen_data(decoder_weights,
-             classifier_weights,
-             num_obs,
-             latent_input_shape=(6,100),
-             include_attacks=True,
-             attack_prop=0.5):
+def synth_attacks(decoder_weights,
+                  classifier_weights,
+                  num_obs,
+                  latent_input_shape=(6,100)):
     '''
-    load in decoder (and classifier), then generate new data
+    load in decoder (and classifier), then generate attacks
     inputs
     #   decoder weights - path of h5 file with decoder weights
     #   classifier_weights - path of h5 file with classifier weights
-    #   num_obs - size of data to generate
+    #   num_obs - number of attacks to generate
     #   include_attacks - whether i want to generate attacks too
-    #   attack_prop - proportion of observations that are attacks
     '''
     noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
-    # vae=VAE_attack_generator.get_vae()
-    # vae.load_weights(weights)
+
     decoder=VAE_attack_generator.build_decoder()
     decoder.load_weights(decoder_weights)
     synthetic_features=decoder.predict(noise)[2]
 
-    if include_attacks:
-        classifier=VAE_attack_generator.build_classifier()
-        classifier.load_weights(classifier_weights)
-        synthetic_labels=(classifier.predict(noise)[:,1]>=0.5)+0
+    classifier=VAE_attack_generator.build_classifier()
+    classifier.load_weights(classifier_weights)
+    synthetic_labels=(classifier.predict(noise)[:,1]>=0.5)+0
 
-        # get right proportion of attacks
-        num_left=int(np.ceil(num_obs*attack_prop)-sum(synthetic_labels))
-        while num_left > 0:
-            noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
+    # only want attacks
+    num_left=int(num_obs-sum(synthetic_labels))
+    while num_left > 0:
+        noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
 
-            # new observations to choose from, only keep new attacks
-            new_synth_lab=(classifier.predict(noise)[:,1]>=0.5)+0
-            new_synth_feat=decoder.predict(noise)[2][np.where(new_synth_lab==1)]
+        # new observations to choose from, only keep new attacks
+        new_synth_lab=(classifier.predict(noise)[:,1]>=0.5)+0
+        new_synth_feat=decoder.predict(noise)[2][np.where(new_synth_lab==1)]
 
-            # candidate replacement locations
-            clean_locations=np.where(synthetic_labels==0)[0]
+        # candidate replacement locations
+        clean_locations=np.where(synthetic_labels==0)[0]
 
-            # either generated more than necessary or not enough
-            n = (num_left if len(new_synth_feat) >= num_left else len(new_synth_feat))
+        # either generated more than necessary or not enough
+        n = (num_left if len(new_synth_feat) >= num_left else len(new_synth_feat))
 
-            replace=np.random.choice(clean_locations,n,replace=False)
-            synthetic_features[replace]=new_synth_feat
-            synthetic_labels[replace]=np.ones(n)
+        replace=np.random.choice(clean_locations,n,replace=False)
+        synthetic_features[replace]=new_synth_feat
+        synthetic_labels[replace]=np.ones(n)
 
-            num_left -= n
+        num_left -= n
 
-    return (synthetic_features, synthetic_labels)
+    return synthetic_features
 
 
 # function to manually implant attacks, given model-agnostic input data
-def gen_data_manual(features,
-                    names):
+def manual_attacks(features,
+                   names):
     '''
     given clean data, manually transform into naive attacks (swaps)
     transform all data given
@@ -178,4 +174,55 @@ def gen_data_manual(features,
     return features
 
 
-# wrapper to manually implant attacks in synthetic "clean" data
+def manual_attacks_on_synth(num_obs,
+                            decoder_weights,
+                            latent_input_shape=(6,100)):
+    '''
+    generate clean synthetic data and manually convert to attacks
+    inputs
+    #   num_obs - desired number of attacks
+    #   decoder_weights - path to h5 file with decoder weights
+    #   latent_input_shape - dimensions of encoded latent space
+    return
+    #   synthetic attacks
+    '''
+    (_,_),(_,_),names=get_rolled_data()
+
+    noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
+
+    decoder=VAE_attack_generator.build_decoder()
+    decoder.load_weights(decoder_weights)
+    clean=decoder.predict(noise)[2]
+
+    return manual_attacks(clean,names)
+
+def get_synthetic_training_data(synth_attacks,
+                                manual_attacks,
+                                synth_clean,
+                                attack_prop=0.5):
+    '''
+    generate synthetic data with desired proportion and type of attacks
+    always generates synthetic data on top of batadal03
+    want to quantify added value of synthetic data
+
+    model: always include full batadal04 set. augment with clean data type
+    and attack data type to the desired proportions. augmentations come from
+    batadal03.
+
+    options:
+    (0)     always include real attack examples in training, to quantify
+            added benefit of the synthetic data
+    (1)     manual attacks on synthetic data or generated attacks or both
+    (2)     implant in raw or generated clean data
+    inputs
+    #       synth_attacks - boolean, generate attacks from decoder?
+    #       manual_attacks - boolean, generate manual attacks?
+    #       synth_clean - boolean, transform clean data with decoder?
+    '''
+
+    (clean,y_clean),(X,y),names=get_rolled_data()
+    num_obs=len(clean)+len(X)
+    num_attacks=np.ceil(num_obs*attack_prop)
+
+    if synth_attacks & manual_attacks:
+        
