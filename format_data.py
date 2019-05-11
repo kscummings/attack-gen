@@ -90,11 +90,11 @@ def synth_attacks(decoder_weights,
     '''
     noise=np.random.normal(size=(num_obs,latent_input_shape[0],latent_input_shape[1]))
 
-    decoder=build_decoder()#VAE_attack_generator.build_decoder()
+    decoder=VAE_attack_generator.build_decoder()
     decoder.load_weights(decoder_weights)
     synthetic_features=decoder.predict(noise)[2]
 
-    classifier=build_classifier()#VAE_attack_generator.build_classifier()
+    classifier=VAE_attack_generator.build_classifier()
     classifier.load_weights(classifier_weights)
     synthetic_labels=(classifier.predict(noise)[:,1]>=0.5)+0
 
@@ -123,15 +123,16 @@ def synth_attacks(decoder_weights,
 
 
 # function to manually implant attacks, given model-agnostic input data
-def manual_attacks(features,
+def manual_attacks(x,
                    names):
     '''
     given clean data, manually transform into naive attacks (swaps)
     transform all data given
     inputs
-    #   features - data to transform
+    #   x - data to transform
     #   names - feature labels
     '''
+    features=x.copy()
     m=len(features)
     window_length=features.shape[1]
 
@@ -159,17 +160,14 @@ def manual_attacks(features,
         # i.e. the difference between the swapped readings is non-negligible (greater than 0.1)
         swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-
             features[k,start:end,swap_pair[k,1]],1)!=0)
-        while !swap_quality:
-            sensor_type[k]=np.random.choice(tags,size=1,replace=True)
+        while not swap_quality:
+            sensor_type[k]=np.random.choice(tags,size=1)[0]
             swap_pair[k]=np.random.choice(sensor_dict[sensor_type[k]],size=2,replace=False)
             swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-
                 features[k,start:end,swap_pair[k,1]],1)!=0)
 
         # do the swap
-        temp=features[k,start:end,swap_pair[k,0]].copy()
-        features[k,start:end,swap_pair[k,0]]=features[k,start:end,swap_pair[k,1]]
-        features[k,start:end,swap_pair[k,1]]=temp
-        temp=None
+        features[k,start:end,swap_pair[k,0]],features[k,start:end,swap_pair[k,1]]=features[k,start:end,swap_pair[k,1]],features[k,start:end,swap_pair[k,0]]
 
     return features
 
