@@ -7,6 +7,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 from sklearn.preprocessing import MinMaxScaler
 
+import os
 import pandas as pd
 import numpy as np
 
@@ -37,8 +38,8 @@ def get_rolled_data(std_pct=0.1,window_length=24):
     import, standardize, remove low-variance features, and roll
     """
     # import
-    clean = pd.read_csv("./batadal/BATADAL_dataset03.csv")
-    attack = pd.read_csv("./batadal/BATADAL_dataset04_manualflags.csv")
+    clean = pd.read_csv(os.path.join("batadal","BATADAL_dataset03.csv"))
+    attack = pd.read_csv(os.path.join("batadal","BATADAL_dataset04_manualflags.csv"))
 
     # feature/response format
     y_clean = clean['ATT_FLAG'].values
@@ -71,6 +72,28 @@ def get_rolled_attack_data(std_pct=0.1,window_length=24):
     """
     (_, _), (attack, y_attack), _ = get_rolled_data(std_pct,window_length)
     return attack[y_attack==1,:]
+
+def get_rolled_test_data(std_pct=0.1,window_length=24):
+    '''
+    import/process official test set
+    '''
+    clean=pd.read_csv(os.path.join("batadal","BATADAL_dataset03.csv"))
+    test=pd.read_csv(os.path.join("batadal","BATADAL_test_dataset_withflags.csv"))
+    y_test=test['ATT_FLAG'].values
+
+    clean=clean.drop(columns=['DATETIME','ATT_FLAG']).values
+    test=test.drop(columns=['DATETIME','ATT_FLAG'])
+    names=test.columns
+    test=test.values
+
+    scaler = MinMaxScaler()
+    scaler.fit(clean)
+    test = scaler.transform(test)
+    keep = clean.std(0) > np.percentile(clean.std(0), std_pct)
+    test = test[:,keep]
+    names = names[keep]
+
+    return roll(test, y_test, window_length)
 
 '''
 GENERATE SYNTHETIC DATA
@@ -260,4 +283,6 @@ def get_synthetic_training_data(attack_decoder_weights,
     X=np.concatenate((X,X_attack),axis=0)
     y=np.concatenate((y,np.ones(int(num_attacks_left))))
 
-    return (X,y)
+    ind=np.shuffle(len(X))
+
+    return (X[ind],y[ind])

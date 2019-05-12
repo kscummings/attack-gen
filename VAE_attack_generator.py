@@ -415,11 +415,8 @@ def train_vae(data,
 
     np.save(os.path.join(output_dir,'window.npy'),window)
 
-    loss_df = pd.DataFrame()
-    loss_df['loss'],loss_df['val_loss']=loss_history[:,0],loss_history[:,1]
-    loss_df['classification_loss'],loss_df['val_classification_loss']=loss_history[:,2],loss_history[:,3]
-    loss_df['generation_loss'],loss_df['val_generation_loss']=loss_history[:,4],loss_history[:,5]
-
+    loss_df = pd.DataFrame(loss_history,columns=['loss','val_loss','classification_loss',
+                                'val_classification_loss','generation_loss','val_generation_loss'])
     loss_df.to_csv(os.path.join(output_dir,'loss_results.csv'), index=False)
 
     # visualize windows and loss
