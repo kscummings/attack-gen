@@ -34,6 +34,7 @@ import argparse
 import os
 
 import format_data
+import synthetic_data
 
 '''
 CONSTANTS
@@ -43,7 +44,7 @@ TEST_SIZE=0.3
 BATCH_SIZE=256
 MODELS_DIR="best_models"
 OUTPUT_DIR="final_results"
-NUM_EPOCHS=70
+NUM_EPOCHS=80
 NUM_TRIALS=3
 
 '''
@@ -183,8 +184,8 @@ def train_trials(num_trials,
     results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
 
     # get data
-    (clean,y_clean),(attack,y_attack),names=get_rolled_data()#format_data.get_rolled_data()
-    test,y_test=get_rolled_test_data()#format_data.get_rolled_test_data()
+    (clean,y_clean),(attack,y_attack),names=format_data.get_rolled_data()
+    test,y_test=format_data.get_rolled_test_data()
 
     # get weights
     decoder_weights=os.path.join(models_dir,"decoder.h5")
@@ -192,8 +193,6 @@ def train_trials(num_trials,
     clean_decoder_weights=os.path.join(models_dir,"clean_decoder.h5")
 
     w=class_weight.compute_class_weight('balanced',np.unique(y_attack),y_attack)
-
-    test_model=build_attack_detection_model()
 
     # TODO: clean this up later
     for n in np.arange(num_trials):
@@ -207,6 +206,7 @@ def train_trials(num_trials,
                          batch_size=batch_size,
                          w=w)
         res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
+        test_model=build_attack_detection_model()
         test_model.load_weights(os.path.join(current_dir,"model.h5"))
         tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
 
@@ -218,7 +218,7 @@ def train_trials(num_trials,
 
         ########################## WITH SYNTHETIC SWAPS
         current_dir=os.path.join(output_dir,"synth_swaps_{}".format(n+1))
-        data=get_synthetic_training_data(decoder_weights,
+        data=synthetic_data.get_synthetic_training_data(decoder_weights,
                                          classifier_weights,
                                          clean_decoder_weights,
                                          implant_synth_attacks=False,
@@ -229,6 +229,7 @@ def train_trials(num_trials,
                          test_size=test_size,
                          batch_size=batch_size)
         res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
+        test_model=build_attack_detection_model()
         test_model.load_weights(os.path.join(current_dir,"model.h5"))
         tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
 
@@ -240,7 +241,7 @@ def train_trials(num_trials,
 
         ########################## WITH SYNTHETIC GENERATED
         current_dir=os.path.join(output_dir,"synth_gen_{}".format(n+1))
-        data=get_synthetic_training_data(decoder_weights,
+        data=synthetic_data.get_synthetic_training_data(decoder_weights,
                                          classifier_weights,
                                          clean_decoder_weights,
                                          implant_synth_attacks=True,
@@ -251,6 +252,7 @@ def train_trials(num_trials,
                          test_size=test_size,
                          batch_size=batch_size)
         res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
+        test_model=build_attack_detection_model()
         test_model.load_weights(os.path.join(current_dir,"model.h5"))
         tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
 
@@ -262,7 +264,7 @@ def train_trials(num_trials,
 
         ########################## BOTH SWAPS AND GENERATED
         current_dir=os.path.join(output_dir,"both_{}".format(n+1))
-        data=get_synthetic_training_data(decoder_weights,
+        data=synthetic_data.get_synthetic_training_data(decoder_weights,
                                          classifier_weights,
                                          clean_decoder_weights,
                                          implant_synth_attacks=True,
@@ -273,6 +275,7 @@ def train_trials(num_trials,
                          test_size=test_size,
                          batch_size=batch_size)
         res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
+        test_model=build_attack_detection_model()
         test_model.load_weights(os.path.join(current_dir,"model.h5"))
         tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
 
