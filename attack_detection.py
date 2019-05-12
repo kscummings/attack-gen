@@ -39,6 +39,13 @@ import format_data
 CONSTANTS
 '''
 
+TEST_SIZE=0.3
+BATCH_SIZE=256
+MODELS_DIR="best_models"
+OUTPUT_DIR="final_results"
+NUM_EPOCHS=70
+NUM_TRIALS=3
+
 '''
 MAIN MODEL
 '''
@@ -274,3 +281,18 @@ def train_trials(num_trials,
         results.loc[4*n+3,'test_acc']=(tn+tp)/len(y_test)
         results.loc[4*n+3,6:]=np.array([tn,fp,fn,tp])
         results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
+
+'''
+MAIN LOOP
+'''
+
+def main():
+    train_trials(num_trials=NUM_TRIALS,
+                 output_dir=output_dir,
+                 models_dir=models_dir,
+                 epochs=NUM_EPOCHS,
+                 test_size=TEST_SIZE,
+                 batch_size=BATCH_SIZE)
+
+if __name__ == '__main__':
+    main()
