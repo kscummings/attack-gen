@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import sys
 import wntr
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -14,7 +15,7 @@ sys.path.append('..')
 from src.utils import get_data_path
 
 
-class water_network:
+class WaterNetwork:
     """
     obtain ctown water network
     adapted from https://github.com/4flixt/2019_WNTR_Surrogate_Model
@@ -67,13 +68,24 @@ class water_network:
 
 def main():
     FILEPATH=path.join(get_data_path(),"CTOWN.INP")
-    wn=water_network(FILEPATH)
+    wn=WaterNetwork(FILEPATH)
     dem=wn.sim_demand()
-    tanks,reservoirs,_=wn.get_nodes()
+    tanks,reservoirs,junctions=wn.get_nodes()
+    res=dem.drop(np.hstack((junctions,tanks)),axis=1)
+    supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
     dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
 
-    fig,_=plt.subplots()
-    ax=dem.plot()
+    # look at time series
+    res.plot()
+    supply.plot()
+    plt.show()
+    dem.plot()
+    plt.show()
+
+    # average supply and demand
+    plt.hist(supply.mean(axis=0),density=True,bins=30)
+    plt.show()
+    plt.hist(dem.mean(axis=0),density=True,bins=30)
     plt.show()
 
 
