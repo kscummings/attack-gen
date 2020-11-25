@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import sys
 import wntr
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 
 from os import path
 
@@ -29,7 +31,7 @@ class water_network:
 
     def get_nodes(self):
         """
-        get all nodes
+        get all nodes: tanks, reservoirs, junctions
         """
         node_names = self.wn.node_name_list
         tank_names = [tank for tank in node_names if tank.startswith("T")]
@@ -39,7 +41,7 @@ class water_network:
 
     def get_links(self):
         """
-        get all links
+        get all links: pumps, pipes, valves
         """
         link_names = self.wn.link_name_list
         pump_names = [pump for pump in link_names if pump.startswith("PU")]
@@ -54,10 +56,25 @@ class water_network:
         """
         return self.wn.get_graph()
 
+    def sim_demand(self):
+        """
+        simulate a week of demand on this water network
+        """
+        sim = wntr.sim.EpanetSimulator(self.wn)
+        results = sim.run_sim()
+        return results.node['demand']
+
 
 def main():
     FILEPATH=path.join(get_data_path(),"CTOWN.INP")
     wn=water_network(FILEPATH)
+    dem=wn.sim_demand()
+    tanks,reservoirs,_=wn.get_nodes()
+    dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
+
+    fig,_=plt.subplots()
+    ax=dem.plot()
+    plt.show()
 
 
 if __name__ == '__main__':
