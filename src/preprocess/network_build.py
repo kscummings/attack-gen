@@ -29,6 +29,7 @@ class WaterNetwork:
         """
         self.__filePath = filePath
         self.wn = wntr.network.WaterNetworkModel(self.__filePath)
+        self.wn.options.hydraulic.demand_model = 'DD'
 
     def get_nodes(self):
         """
@@ -55,11 +56,31 @@ class WaterNetwork:
         """
         topology of water network
         """
-        return self.wn.get_graph()
+        G_original=self.wn.get_graph()
+
+        # single pipe per node pair
+        assert all([len(G_original[u][v])==1 for (u,v,_) in G_original.edges])
+
+        G=nx.DiGraph()
+
+        # same nodes, same data
+        for node, node_data in G_original.nodes(data=True):
+            G.add_node(node,pos=node_data['pos'],type=node_data['type'])
+
+        # updated edges, same data
+        # move pipe/pump/valve name to edge attribute
+        for (u,v,id) in G_original.edges:
+            G.add_edge(u,v,edge_id=id)
+        for (u,v,edge_data) in G_original.edges(data=True):
+            G[u][v]['type']=edge_data['type']
+
+        return G
+
 
     def sim_demand(self):
         """
         simulate a week of demand on this water network
+        units: m^3/s
         """
         sim = wntr.sim.EpanetSimulator(self.wn)
         results = sim.run_sim()

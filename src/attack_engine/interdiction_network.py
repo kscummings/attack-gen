@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
+from functools import reduce
+
 
 sys.path.append('..')
 from src.utils import get_data_path
@@ -19,47 +21,41 @@ from src.preprocess import WaterNetwork
 
 class InterdictionNetwork:
     """
-    Network considered by attacker
+    Auxiliary max-flow network
     """
     def __init__(self, filepath):
+        """
+        ### Keyword Arguments
+        *`filepath` - location of water network input file
+        """
 
         # water network
         self.original_wn=WaterNetwork(filepath)
 
         # full week of simulated demand
-        self.dem=self.original_wn.sim_demand()
-
-        # just the demands
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
-        self.dem=self.dem.drop(np.hstack((tanks,reservoirs)),axis=1)
-        totaldem=self.dem.sum(axis=0)
+        assert ["R1"]==reservoirs
+        dem=self.original_wn.sim_demand()
 
         # build network
-        G=self.original_wn.get_network()
-
-        # name source, build reservoir's out-edges to tanks
-        assert ["R1"]==reservoirs
-        assert all([len(G[u][v])==1 for (u,v,_) in G.edges])
-        G.add_node("source")
-        G.add_edge("source","R1","P0") # source to reservoir
-        source_edges=[("R1",tank,"P0") for tank in tanks]
-        G.add_edges_from(source_edges)
-
-        # build sink and its in-edges from junctions with demand
-        G.add_node("sink")
-        sink_edges=[(junction,"sink","P0") for junction in junctions]
-
-        # edge attributes: demand
-        # assumes supply can satisfy all
-        totaldem_dict={(j,s,p):totaldem[j] for (j,s,p) in sink_edges}
-        totaldem_dict.update({("source","R1","P0"):-sum(totaldem_dict.values())})
-        totaldem_dict.update({e : 0 for e in G.edges if (e not in source_edges) & (e not in sink_edges)})
-        nx.set_edge_attributes(G,totaldem_dict,"demand")
-
-        # finalize
-        self.topo=G
         self.source_name="source"
         self.sink_name="sink"
+        G_original=self.original_wn.get_network()
+
+        # name source, build reservoir's out-edges to tanks
+        G.add_node(self.source_name)
+        G.add_edge(self.source_name,"R1") # source to reservoir
+        self.source_edges=[("R1",tank) for tank in tanks]
+        G.add_edges_from(self.source_edges)
+
+        # build sink and its in-edges from junctions with demand
+        G.add_node(self.sink_name)
+        self.sink_edges=[(junction,self.sink_name) for junction in junctions]
+
+        # finalize
+        self.G=G
+        self.update_demand(dem)
+
 
 
     def reduce_demand(self,null_nodes):
@@ -69,14 +65,32 @@ class InterdictionNetwork:
         *`null_nodes` - zero out demand of the nodes in this list
         """
         dem=nx.get_edge_attributes(self.topo,'demand')
-
-        # update all of the demands in the network
-        nx.set_node_attributes(self.topo,dem)
+        dem.update({j:0 for j in null_nodes})
+        nx.set_edge_attributes(self.topo,dem)
 
     def update_demand(self,dem):
         """
         set 'dem' attribute to specific demand set
+        update in network: demand, tank capacities
         """
+        tanks,reservoirs,junctions=self.original_wn.get_nodes()
+        supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
+        dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
         self.dem=dem
 
-        # reset in the network too
+        # assumes supply can satisfy all
+        totaldem=self.dem.sum(axis=0)
+        totaldem_dict={(j,s):totaldem[j] for (j,s) in self.sink_edges}
+        totaldem_dict.update({(self.source_name,"R1"):-sum(totaldem_dict.values())})
+        totaldem_dict.update({e:0 for e in self.G.edges if (e not in self.source_edges) & (e not in self.sink_edges)})
+        nx.set_edge_attributes(self.G,totaldem_dict,"demand")
+
+        # compute capacities of tanks: the amount that it gave throughout the week
+        cap=supply.agg([sum_neg])
+        cap_dict={(u,v):cap[v].sum_neg for (u,v) in self.source_edges}
+        cap_dict.update({(u,v):M for (u,v) in self.G.edges if (u,v) not in self.source_edges})
+        nx.set_edge_attributes(self.G,cap_dict,"capacity")
+
+
+def sum_neg(series):
+    return reduce(lambda a,b: a+b if (b<0) else a, series)
