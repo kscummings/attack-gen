@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import csv
 import sys
 import wntr
 
@@ -176,14 +177,14 @@ class InterdictionNetwork:
 # J332 -> J301 separates T5 CC
 # J288 -> J300 separates T3 CC
 # J422 -> J420 separates T2/T4 CC
-def edge_sensor_xwalk(G,filepath):
+def edge_sensor_xwalk(G,data_path):
     """
     Determine connected components corresponding to each sensor set to build edge/sensor xwalk
     ### Keyword Arguments
     *`G` - water network graph (not auxiliary graph)
-    *`filepath` - directory containing system xwalk
+    *`data_path` - directory containing system xwalk
     """
-    sensor_xwalk=pd.read_csv(os.path.join(get_data_path(),"sensor_xwalk.csv"))
+    sensor_xwalk=pd.read_csv(os.path.join(data_path,"sensor_xwalk.csv"))
     tankcol=[col for col in sensor_xwalk if col.startswith('T')]
     assert all(sensor_xwalk[tankcol].sum(axis=0)==1)
     sensor_switch={}
@@ -210,6 +211,14 @@ def edge_sensor_xwalk(G,filepath):
         ("J332","J301"):sensor_switch["T5"],
         ("J422","J420"):sensor_switch["T2"]
     })
+
+    # write the dictionary
+    with open(path.join(data_path,"edge_sensor_xwalk.csv"), 'w', newline='') as csvfile:
+        fieldnames=['origin','dest','sensor_set_id']
+        writer=csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for (u,v),sensor_id in edge_sensor_dict.items():
+            writer.writerow({'origin':u,'dest':v,'sensor_set_id':sensor_id})
 
     # restore graph
     G.add_edges_from(CC_EDGES)
