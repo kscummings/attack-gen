@@ -14,6 +14,14 @@ from os import path
 sys.path.append('..')
 from src.utils import get_data_path
 
+CC_EDGES=[("J302","J307"),("J332","J301"),("J288","J300"),("J422","J420")]
+# J302 -> J307 separates T6/T7 CC
+# J332 -> J301 separates T5 CC
+# J288 -> J300 separates T3 CC
+# J422 -> J420 separates T2/T4 CC
+
+
+########################CONSTRUCTORS
 
 class WaterNetwork:
     """
@@ -159,6 +167,53 @@ class InterdictionNetwork:
         cap_dict.update({(u,v):M for (u,v) in self.G.edges if (u,v) not in self.source_edges})
         nx.set_edge_attributes(self.G,cap_dict,"capacity")
 
+########################HELPERS
+
+# TODO: determine connected components to build edge/sensor xwalk
+
+# TODO: FUNCTION TO WRITE THE NETWORK TO DISC IN A WAY THAT'S LEGIBLE TO JULIA
+# J302 -> J307 separates T6/T7 CC
+# J332 -> J301 separates T5 CC
+# J288 -> J300 separates T3 CC
+# J422 -> J420 separates T2/T4 CC
+def edge_sensor_xwalk(G,filepath):
+    """
+    Determine connected components corresponding to each sensor set to build edge/sensor xwalk
+    ### Keyword Arguments
+    *`G` - water network graph (not auxiliary graph)
+    *`filepath` - directory containing system xwalk
+    """
+    sensor_xwalk=pd.read_csv(os.path.join(get_data_path(),"sensor_xwalk.csv"))
+    tankcol=[col for col in sensor_xwalk if col.startswith('T')]
+    assert all(sensor_xwalk[tankcol].sum(axis=0)==1)
+    sensor_switch={}
+    for i in range(len(sensor_xwalk)):
+        sensor_set_id=sensor_xwalk.at[i,"sensor_set_id"]
+        tanks=[tank for tank in tankcol if sensor_xwalk.at[i,tank]==1]
+        sensor_switch.update({tank:sensor_set_id for tank in tanks})
+
+    # remove CC edges
+    G.remove_edges_from(CC_EDGES)
+
+    # find connected components
+    edge_sensor_dict={}
+    for cc in nx.weakly_connected_components(G):
+        cc_edge_set=G.subgraph(cc).edges
+        for tank in tankcol:
+            if tank in cc:
+                edge_sensor_dict.update({edge:sensor_switch[tank] for edge in cc_edge_set})
+
+    # manually add removed edges
+    edge_sensor_dict.update({
+        ("J288","J300"):sensor_switch["T3"],
+        ("J302","J307"):sensor_switch["T6"],
+        ("J332","J301"):sensor_switch["T5"],
+        ("J422","J420"):sensor_switch["T2"]
+    })
+
+    # restore graph
+    G.add_edges_from(CC_EDGES)
+
 
 def sum_neg(series):
     return reduce(lambda a,b: a+b if (b<0) else a, series)
@@ -172,18 +227,20 @@ def main():
     supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
     dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
 
-    # look at time series
-    res.plot()
-    supply.plot()
-    plt.show()
-    dem.plot()
-    plt.show()
 
-    # average supply and demand
-    plt.hist(supply.mean(axis=0),density=True,bins=30)
-    plt.show()
-    plt.hist(dem.mean(axis=0),density=True,bins=30)
-    plt.show()
+
+    # look at time series
+    # res.plot()
+    # supply.plot()
+    # plt.show()
+    # dem.plot()
+    # plt.show()
+    #
+    # # average supply and demand
+    # plt.hist(supply.mean(axis=0),density=True,bins=30)
+    # plt.show()
+    # plt.hist(dem.mean(axis=0),density=True,bins=30)
+    # plt.show()
 
 
 if __name__ == '__main__':
