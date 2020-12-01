@@ -16,10 +16,11 @@ sys.path.append('..')
 from src.utils import get_data_path
 
 CC_EDGES=[("J302","J307"),("J332","J301"),("J288","J300"),("J422","J420")]
-# J302 -> J307 separates T6/T7 CC
-# J332 -> J301 separates T5 CC
-# J288 -> J300 separates T3 CC
-# J422 -> J420 separates T2/T4 CC
+
+# big ole number
+M=1e7
+
+RESERVOIR="R1"
 
 
 ########################CONSTRUCTORS
@@ -76,12 +77,21 @@ class WaterNetwork:
         for node, node_data in G_original.nodes(data=True):
             G.add_node(node,pos=node_data['pos'],type=node_data['type'])
 
+        # get link lengths, add as edge distance attribute
+        pipe_len={pipe:pd.length for pipe,pd in self.wn.pipes()}
+        mean_pipe_len=np.mean(list(pipe_len.values()))
+
         # updated edges, same data
         # move pipe/pump/valve name to edge attribute
         for (u,v,id) in G_original.edges:
             G.add_edge(u,v,edge_id=id)
+            if id in pipe_len.keys():
+                G[u][v]['distance']=pipe_len[id]
+            else:
+                G[u][v]['distance']=mean_pipe_len
         for (u,v,edge_data) in G_original.edges(data=True):
             G[u][v]['type']=edge_data['type']
+
 
         return G
 
@@ -99,41 +109,75 @@ class WaterNetwork:
 class InterdictionNetwork:
     """
     Auxiliary max-flow network
+    * adds source and sink
+    * connects source to reservoir
+    * connects all demand nodes to sink
+    * connects reservoir to all tanks
+    * converts network (not auxiliary) to being undirected
+    * characterizes demand as simulated demand over a week
+    * adds capacities to tank edges equivalent to supplied demand
     """
     def __init__(self, filepath):
         """
         ### Keyword Arguments
         *`filepath` - location of water network input file
+        ### Attributes
+        *`original_wn`
+        *`G`
+        *`source_name`
+        *`sink_name`
+        *`reservoir`
+        *`source_edges`
+        *`sink_edges`
+        *`fortified_edges`
+        *`original_dem`
         """
-
+        ### initialize
         # water network
         self.original_wn=WaterNetwork(filepath)
 
         # full week of simulated demand
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
-        assert ["R1"]==reservoirs
         dem=self.original_wn.sim_demand()
 
         # build network
         self.source_name="source"
         self.sink_name="sink"
-        G_original=self.original_wn.get_network()
+        self.reservoir=RESERVOIR
+        G=self.original_wn.get_network()
+        assert [self.reservoir]==reservoirs
 
+        ### build fortified edges (not interdictable)
+        # fortify reservoir -> tank edges in original network
+        H=G.to_undirected()
+        path_lengths,paths=nx.single_source_dijkstra(H,self.reservoir,weight="distance")
+        tank_paths=[get_epath(paths[tank]) for tank in tanks]
+        self.fortified_edges=pd.unique([edge for tank_path in tank_paths for edge in tank_path])
+
+        ### build auxiliary graph
+        # convert original graph to undirected graph
+        assert not any([(v,u) in G.edges for (u,v) in G.edges])
+        backwards=[(v,u,ed) for (u,v,ed) in G.edges(data=True)]
+        G.add_edges_from(backwards)
+
+        # entire auxiliary graph is directed
         # name source, build reservoir's out-edges to tanks
         G.add_node(self.source_name)
-        G.add_edge(self.source_name,"R1") # source to reservoir
-        self.source_edges=[("R1",tank) for tank in tanks]
+        G.add_edge(self.source_name,self.reservoir) # source to reservoir
+        self.source_edges=[(self.reservoir,tank) for tank in tanks]
         G.add_edges_from(self.source_edges)
 
         # build sink and its in-edges from junctions with demand
         G.add_node(self.sink_name)
         self.sink_edges=[(junction,self.sink_name) for junction in junctions]
+        G.add_edges_from(self.sink_edges)
+
+        # sink->source edge
+        G.add_edge(self.sink_name,self.source_name)
 
         # finalize
         self.G=G
         self.update_demand(dem)
-
-
 
     def reduce_demand(self,null_nodes):
         """
@@ -145,22 +189,22 @@ class InterdictionNetwork:
         dem.update({j:0 for j in null_nodes})
         nx.set_edge_attributes(self.topo,dem)
 
-    def update_demand(self,dem):
+    def update_flows(self,dem):
         """
-        set 'dem' attribute to specific demand set
+        reset flows through network
         update in network: demand, tank capacities
         """
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
         supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
         dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
-        self.dem=dem
 
         # assumes supply can satisfy all
-        totaldem=self.dem.sum(axis=0)
+        totaldem=dem.sum(axis=0)
         totaldem_dict={(j,s):totaldem[j] for (j,s) in self.sink_edges}
-        totaldem_dict.update({(self.source_name,"R1"):-sum(totaldem_dict.values())})
+        totaldem_dict.update({(self.source_name,self.reservoir):-sum(totaldem_dict.values())})
         totaldem_dict.update({e:0 for e in self.G.edges if (e not in self.source_edges) & (e not in self.sink_edges)})
         nx.set_edge_attributes(self.G,totaldem_dict,"demand")
+        self.original_dem=totaldem_dict
 
         # compute capacities of tanks: the amount that it gave throughout the week
         cap=supply.agg([sum_neg])
@@ -168,18 +212,16 @@ class InterdictionNetwork:
         cap_dict.update({(u,v):M for (u,v) in self.G.edges if (u,v) not in self.source_edges})
         nx.set_edge_attributes(self.G,cap_dict,"capacity")
 
+
+
 ########################HELPERS
 
-# TODO: determine connected components to build edge/sensor xwalk
 
-# TODO: FUNCTION TO WRITE THE NETWORK TO DISC IN A WAY THAT'S LEGIBLE TO JULIA
-# J302 -> J307 separates T6/T7 CC
-# J332 -> J301 separates T5 CC
-# J288 -> J300 separates T3 CC
-# J422 -> J420 separates T2/T4 CC
+
 def edge_sensor_xwalk(G,data_path):
     """
-    Determine connected components corresponding to each sensor set to build edge/sensor xwalk
+    Determine ted components corresponding to each sensor set to build edge/sensor xwalk
+    (note this might not work anymore post-undirected but doesnt matter bc already built it)
     ### Keyword Arguments
     *`G` - water network graph (not auxiliary graph)
     *`data_path` - directory containing system xwalk
@@ -223,6 +265,9 @@ def edge_sensor_xwalk(G,data_path):
     # restore graph
     G.add_edges_from(CC_EDGES)
 
+def get_epath(npath):
+    plen=len(npath)
+    return [(npath[i],npath[i+1]) for i in range(plen-1)]
 
 def sum_neg(series):
     return reduce(lambda a,b: a+b if (b<0) else a, series)
@@ -235,8 +280,6 @@ def main():
     res=dem.drop(np.hstack((junctions,tanks)),axis=1)
     supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
     dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
-
-
 
     # look at time series
     # res.plot()
