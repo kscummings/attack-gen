@@ -10,17 +10,20 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
+from math import pi
 from os import path
 
 sys.path.append('..')
 from src.utils import get_data_path
 
+### constants
 CC_EDGES=[("J302","J307"),("J332","J301"),("J288","J300"),("J422","J420")]
-
-# big ole number
-M=1e7
-
+NETWORK_COL=['edge_id','origin','dest','dem','source','sink','fortified']
+WATER_VELOCITY=2.4 #m/s
+M=1e7 # big ole number
 RESERVOIR="R1"
+TIME_INCREMENT=900 # simulation increment (seconds) = 15 mins
+TIME_HORIZON=604800 # simulation length - 7 weeks
 
 
 ########################CONSTRUCTORS
@@ -78,8 +81,10 @@ class WaterNetwork:
             G.add_node(node,pos=node_data['pos'],type=node_data['type'])
 
         # get link lengths, add as edge distance attribute
-        pipe_len={pipe:pd.length for pipe,pd in self.wn.pipes()}
+        pipe_len={pipe:pdat.length for pipe,pdat in self.wn.pipes()}
+        pipe_diam={pipe:pdat.diameter for pipe,pdat in self.wn.pipes()}
         mean_pipe_len=np.mean(list(pipe_len.values()))
+        mean_diam=np.mean(list(pipe_diam.values()))
 
         # updated edges, same data
         # move pipe/pump/valve name to edge attribute
@@ -87,11 +92,13 @@ class WaterNetwork:
             G.add_edge(u,v,edge_id=id)
             if id in pipe_len.keys():
                 G[u][v]['distance']=pipe_len[id]
+                G[u][v]['diameter']=pipe_diam[id]
             else:
                 G[u][v]['distance']=mean_pipe_len
+                G[u][v]['diameter']=mean_diam
+
         for (u,v,edge_data) in G_original.edges(data=True):
             G[u][v]['type']=edge_data['type']
-
 
         return G
 
@@ -103,7 +110,8 @@ class WaterNetwork:
         """
         sim = wntr.sim.EpanetSimulator(self.wn)
         results = sim.run_sim()
-        return results.node['demand']
+        return results
+
 
 
 class InterdictionNetwork:
@@ -138,7 +146,8 @@ class InterdictionNetwork:
 
         # full week of simulated demand
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
-        dem=self.original_wn.sim_demand()
+        results=self.original_wn.sim_demand()
+        dem=results.node['demand']
 
         # build network
         self.source_name="source"
@@ -177,7 +186,7 @@ class InterdictionNetwork:
 
         # finalize
         self.G=G
-        self.update_demand(dem)
+        self.update_flows(results)
 
     def reduce_demand(self,null_nodes):
         """
@@ -189,28 +198,85 @@ class InterdictionNetwork:
         dem.update({j:0 for j in null_nodes})
         nx.set_edge_attributes(self.topo,dem)
 
-    def update_flows(self,dem):
+    def update_flows(self,results):
         """
         reset flows through network
-        update in network: demand, tank capacities
+        update in network: demand, tank and pipe capacities (all edge cap)
         """
+        dem=results.node['demand']
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
+        _,pipes,_=self.original_wn.get_links()
         supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
         dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
 
+        # build demand
         # assumes supply can satisfy all
-        totaldem=dem.sum(axis=0)
+        totaldem=dem.sum(axis=0)*TIME_INCREMENT
         totaldem_dict={(j,s):totaldem[j] for (j,s) in self.sink_edges}
-        totaldem_dict.update({(self.source_name,self.reservoir):-sum(totaldem_dict.values())})
+        totaldem_dict.update({(self.source_name,self.reservoir):sum(totaldem_dict.values())})
         totaldem_dict.update({e:0 for e in self.G.edges if (e not in self.source_edges) & (e not in self.sink_edges)})
         nx.set_edge_attributes(self.G,totaldem_dict,"demand")
         self.original_dem=totaldem_dict
 
-        # compute capacities of tanks: the amount that it gave throughout the week
-        cap=supply.agg([sum_neg])
-        cap_dict={(u,v):cap[v].sum_neg for (u,v) in self.source_edges}
-        cap_dict.update({(u,v):M for (u,v) in self.G.edges if (u,v) not in self.source_edges})
-        nx.set_edge_attributes(self.G,cap_dict,"capacity")
+        # capacities on tanks (total vol over time horizon)
+        inflow=supply.max()
+        outflow=abs(supply.min())
+        tank_cap=TIME_HORIZON/(1/inflow+1/outflow)
+
+        # capacities on pipes (total vol over time horizon)
+        vel=results.link['velocity'].max()
+        pipe_cap={}
+        for u,v,ed in self.G.edges(data=True):
+            if 'edge_id' in ed.keys():
+                edge_id=ed['edge_id']
+                if edge_id in pipes:
+                    pipe_cap[(u,v)]=pi*ed['diameter']**2*vel[edge_id]*TIME_HORIZON/4
+
+        # build capacity dict
+        capdict=pipe_cap
+        capdict.update({(r,t):tank_cap[t] for (r,t) in self.source_edges})
+        nx.set_edge_attributes(self.G,capdict,"capacity")
+
+
+    def get_demand(self):
+        """
+        return demand attribute
+        """
+        return nx.get_edge_attributes(self.G,"demand")
+
+    def to_csv(self,filepath):
+        """
+        record information necessary to build interdiction network in julia
+        ### Writes
+        *`edge.csv` - origin, destination, demand, source_edge (1-0), sink_edge (1-0), fortified_edge (1-0)
+        """
+        dat=pd.DataFrame(index=range(len(self.G.edges)),columns=NETWORK_COL)
+        edge_ids,origin,dest,demand,source,sink,fortified=[],[],[],[],[],[],[]
+        t=0
+        for u,v,data in self.G.edges(data=True):
+            t+=1
+            # contingent characteristics
+            edge_id = data['edge_id'] if 'edge_id' in data.keys() else "edge"+str(t)
+            dem = data['demand'] if 'demand' in data.keys() else 0
+
+            edge_ids.append(edge_id)
+            origin.append(u)
+            dest.append(v)
+            demand.append(dem)
+            source.append((u,v) in self.source_edges)
+            sink.append((u,v) in self.sink_edges)
+            fortified.append((u,v) in self.fortified_edges)
+
+        # record and return
+        dat['edge_id']=edge_ids
+        dat['origin']=origin
+        dat['dest']=dest
+        dat['dem']=demand
+        dat['source']=source
+        dat['sink']=sink
+        dat['fortified']=fortified
+        dat.to_csv(filepath)
+        return dat
 
 
 
@@ -275,7 +341,8 @@ def sum_neg(series):
 def main():
     FILEPATH=path.join(get_data_path(),"CTOWN.INP")
     wn=WaterNetwork(FILEPATH)
-    dem=wn.sim_demand()
+    res=wn.sim_demand()
+    dem=res.node['demand']
     tanks,reservoirs,junctions=wn.get_nodes()
     res=dem.drop(np.hstack((junctions,tanks)),axis=1)
     supply=dem.drop(np.hstack((junctions,reservoirs)),axis=1)
