@@ -18,7 +18,7 @@ from src.utils import get_data_path
 
 ### constants
 CC_EDGES=[("J302","J307"),("J332","J301"),("J288","J300"),("J422","J420")]
-NETWORK_COL=['edge_id','origin','dest','dem','source','sink','fortified']
+NETWORK_COL=['edge_id','origin','dest','dem','capacity','source','sink','fortified']
 WATER_VELOCITY=2.4 #m/s
 M=1e7 # big ole number
 RESERVOIR="R1"
@@ -213,8 +213,6 @@ class InterdictionNetwork:
         # assumes supply can satisfy all
         totaldem=dem.sum(axis=0)*TIME_INCREMENT
         totaldem_dict={(j,s):totaldem[j] for (j,s) in self.sink_edges}
-        totaldem_dict.update({(self.source_name,self.reservoir):sum(totaldem_dict.values())})
-        totaldem_dict.update({e:0 for e in self.G.edges if (e not in self.source_edges) & (e not in self.sink_edges)})
         nx.set_edge_attributes(self.G,totaldem_dict,"demand")
         self.original_dem=totaldem_dict
 
@@ -237,6 +235,11 @@ class InterdictionNetwork:
         capdict.update({(r,t):tank_cap[t] for (r,t) in self.source_edges})
         nx.set_edge_attributes(self.G,capdict,"capacity")
 
+    def get_cap(self):
+        """
+        return capacity attribute
+        """
+        return nx.get_edge_attributes(self.G,"capacity")
 
     def get_demand(self):
         """
@@ -251,13 +254,14 @@ class InterdictionNetwork:
         *`edge.csv` - origin, destination, demand, source_edge (1-0), sink_edge (1-0), fortified_edge (1-0)
         """
         dat=pd.DataFrame(index=range(len(self.G.edges)),columns=NETWORK_COL)
-        edge_ids,origin,dest,demand,source,sink,fortified=[],[],[],[],[],[],[]
+        edge_ids,origin,dest,demand,source,sink,fortified,capacity=[],[],[],[],[],[],[],[]
         t=0
         for u,v,data in self.G.edges(data=True):
             t+=1
             # contingent characteristics
             edge_id = data['edge_id'] if 'edge_id' in data.keys() else "edge"+str(t)
-            dem = data['demand'] if 'demand' in data.keys() else 0
+            dem = data['demand'] if 'demand' in data.keys() else ""
+            cap = data['capacity'] if 'capacity' in data.keys() else M
 
             edge_ids.append(edge_id)
             origin.append(u)
@@ -266,6 +270,7 @@ class InterdictionNetwork:
             source.append((u,v) in self.source_edges)
             sink.append((u,v) in self.sink_edges)
             fortified.append((u,v) in self.fortified_edges)
+            capacity.append(cap)
 
         # record and return
         dat['edge_id']=edge_ids
@@ -275,6 +280,7 @@ class InterdictionNetwork:
         dat['source']=source
         dat['sink']=sink
         dat['fortified']=fortified
+        dat['capacity']=capacity
         dat.to_csv(filepath)
         return dat
 

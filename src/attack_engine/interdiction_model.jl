@@ -1,11 +1,9 @@
+using CSV, DataFrames
 """
 Build and solve interdiction model
 Translate interdiction results into attack strategies
 """
-using CSV, DataFrames
 
-# function to read in the interdiction network
-# we need: topology, sink, source, source edges, sink edges, fortified edges
 struct InterdictionNetwork
     # full topology
     V::Vector{Symbol}                           # nodes
@@ -14,8 +12,8 @@ struct InterdictionNetwork
 
     # auxiliary topology
     source::Dict{Symbol,Bool}                   # edge => 1(source edge)
-    sink::Vector{Symbol}                        # edge => 1(sink edge)
-    fortified::Vector{Symbol}                   # edge => 1(not interdictable)
+    sink::Dict{Symbol,Bool}                     # edge => 1(sink edge)
+    fortified::Dict{Symbol,Bool}                # edge => 1(not interdictable)
 
     # network properties
     cap::Dict{Symbol,Real}                      # edge id => capacity
@@ -45,9 +43,17 @@ function InterdictionNetwork(
     source=Dict{Symbol,Bool}(dat[i,:edge_id]=>dat[i,:source] for i in 1:N)
     sink=Dict{Symbol,Bool}(dat[i,:edge_id]=>dat[i,:sink] for i in 1:N)
     fortified=Dict{Symbol,Bool}(dat[i,:edge_id]=>dat[i,:fortified] for i in 1:N)
+    cap=Dict{Symbol,Real}(dat[i,:edge_id]=>dat[i,:capacity] for i in 1:N)
 
-    # build capacities
+    # add demands to cap
+    for i in 1:N
+        dem=dat[i,:dem]
+        if !ismissing(dem)
+            cap[dat[i,:edge_id]]=dem
+        end
+    end
 
+    InterdictionNetwork(V,E,OD,source,sink,fortified,cap)
 end
 
 # function to compute shortest paths from reservoir to each tank, to disqualify key edges from interdiction
