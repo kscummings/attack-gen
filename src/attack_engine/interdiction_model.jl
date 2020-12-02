@@ -1,8 +1,23 @@
-using CSV, DataFrames
+using CSV, DataFrames, Gurobi, JuMP
 """
 Build and solve interdiction model
 Translate interdiction results into attack strategies
 """
+
+function get_data_path()
+    filepath=joinpath(dirname(dirname(dirname(@__DIR__))),"data-path.txt")
+    # Read first line.
+    if isfile(filepath)
+        open(filepath) do f
+            return strip(readline(f))
+        end
+    else
+        @warn "Please write path to data directory in a txt file called `data-path.txt` and store in the transit-alliance root directory."
+    end
+end
+
+GUROBI_ENV=Gurobi.Env()
+EDGE_XWALK_FILEPATH=joinpath(get_data_path(),"edge_sensor_xwalk.csv")
 
 struct InterdictionNetwork
     # full topology
@@ -56,10 +71,63 @@ function InterdictionNetwork(
     InterdictionNetwork(V,E,OD,source,sink,fortified,cap)
 end
 
-# function to compute shortest paths from reservoir to each tank, to disqualify key edges from interdiction
+"""
+### Keywords
+*`intnet` -interdiction network
+*`E_hat` - edges eligible for interdiction
+*`budget` - number of edges that can be interdicted
+"""
+function interdiction_model(
+        intnet::InterdictionNetwork,
+        E_hat::Vector{Symbol},
+        budget::Int64
+    )
+    @assert issubset(E_hat,intnet.E)
 
-# function to build interdiction model
+    model=JuMP.Model(optimizer_with_attributes(() -> Gurobi.Optimizer(gurobi_env), "OutputFlag"=>0))
 
-# function to solve interdiction model
+    JuMP.@variable(model,x[e in E_hat],Bin)
+    JuMP.@variable(model,beta[e in E_hat],Bin)
+    JuMP.@variable(model,theta[e in intnet.E],Bin)
+    JuMP.@variable(model,gamma[k in intnet.V],Bin)
 
-# function to translate interdiction solution to sensor attack strategy and write to disc (read in crosswalk between edges and sensor sets)
+    JuMP.@constraint(model,[e in intnet.E], gamma[intnet.OD[e][1]]-gamma[intnet.OD[e][2]]+theta[e]>=0)
+    JuMP.@constraint(model, gamma[:sink]-gamma[:source]>=1)
+    JuMP.@constraint(model, [e in E_hat], beta[e]>=theta[e]-x[e])
+
+    JuMP.@objective(model,Min,sum(intnet.cap[e]*theta[e] for e in setdiff(intnet.E,E_hat))+sum(intnet.cap[e]*beta[e] for e in E_hat))
+
+    # TODO: INTERDICTION OF ONE DIRECTION APPLIES TO OTHER DIRECTION TOO
+
+    model
+end
+
+"""
+obtain an interdiction decision
+
+### Keywords
+*`intnet` -interdiction network
+*`budget` - number of edges that can be interdicted
+*`fortify` - whether to disallow interdiction of fortified edges
+*`edge_xwalk` - dictionary ((u,v)=>sensor ID)
+"""
+function interdiction_decision(
+        intnet::InterdictionNetwork,
+        budget::Int64,
+        fortify::Bool,
+        edge_xwalk::Dict
+    )
+    # build E_hat
+    E_hat=[edge_id for edge_id in intnet.E if startswith(String(edge_id),"edge")]
+    E_fortified = fortify ? [edge_id for edge_id in intnet.E if intnet.fortified[edge_id]] : []
+    E_hat=vcat(E_hat,E_fortified)
+
+    # solve, obtain interdiction
+    model=interdiction_model(intnet,E_hat,budget)
+    optimize!(model)
+    x=Dict(e=>JuMP.value(model.obj_dict[:x]) for e in E_hat)
+end
+
+
+exw=CSV.read(EDGE_XWALK_FILEPATH, DataFrame)
+exw=Dict((exw[i,:origin],exw[i,:dest])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))

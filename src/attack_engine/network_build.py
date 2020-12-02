@@ -161,7 +161,7 @@ class InterdictionNetwork:
         H=G.to_undirected()
         path_lengths,paths=nx.single_source_dijkstra(H,self.reservoir,weight="distance")
         tank_paths=[get_epath(paths[tank]) for tank in tanks]
-        self.fortified_edges=pd.unique([edge for tank_path in tank_paths for edge in tank_path])
+        self.fortified_edges=list(pd.unique([edge for tank_path in tank_paths for edge in tank_path]))
 
         ### build auxiliary graph
         # convert original graph to undirected graph
