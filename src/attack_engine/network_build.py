@@ -12,6 +12,7 @@ import numpy as np
 
 from copy import copy
 from math import pi
+from networkx.algorithms import bfs_tree
 from os import path
 
 sys.path.append('..')
@@ -197,15 +198,21 @@ class InterdictionNetwork:
         self.G=G
         self.update_flows(results)
 
-    def reduce_demand(self,null_nodes):
+    def lights_off(self,null_nodes):
         """
-        update demand (property 'dem') of each node in the network
+        deactivate demands in given set of nodes
         ### Keyword Arguments
         *`null_nodes` - zero out demand of the nodes in this list
         """
-        dem=nx.get_edge_attributes(self.topo,'demand')
-        dem.update({j:0 for j in null_nodes})
-        nx.set_edge_attributes(self.topo,dem)
+        dem=nx.get_edge_attributes(self.G,"demand")
+        dem.update({(j,self.sink_name):0 for j in null_nodes})
+        nx.set_edge_attributes(self.G,dem,"demand")
+
+    def lights_on(self):
+        """
+        ensure all demands activated
+        """
+        nx.set_edge_attributes(self.G,self.original_dem,"demand")
 
     def update_flows(self,results):
         """
@@ -221,7 +228,7 @@ class InterdictionNetwork:
         # build demand
         # assumes supply can satisfy all
         totaldem=dem.sum(axis=0)*TIME_INCREMENT
-        totaldem_dict={(j,s):totaldem[j] for (j,s) in self.sink_edges}
+        totaldem_dict={(j,t):totaldem[j] for (j,t) in self.sink_edges}
         nx.set_edge_attributes(self.G,totaldem_dict,"demand")
         self.original_dem=totaldem_dict
 
@@ -291,6 +298,7 @@ class InterdictionNetwork:
         dat['fortified']=fortified
         dat['capacity']=capacity
         dat.to_csv(filepath)
+
         return dat
 
 
@@ -308,7 +316,7 @@ def edge_sensor_xwalk(intnet,data_path):
     *`data_path` - directory containing system xwalk
     """
     # revert from auxiliary
-    G=intnet.G
+    G=copy(intnet.G)
     G.remove_edges_from(intnet.sink_edges)
     G.remove_edges_from(intnet.source_edges)
     G.remove_edges_from([(intnet.sink_name,intnet.source_name)])
@@ -361,19 +369,49 @@ def edge_sensor_xwalk(intnet,data_path):
         for edge_id,sensor_id in edge_sensor_dict.items():
             writer.writerow({'edge_id':edge_id,'sensor_set_id':sensor_id})
 
-    # restore graph? 
-    # G.add_edges_from(forward)
-    # G.add_edges_from(backward)
-    # G.remove_edges_from(intnet.sink_edges)
-    # G.remove_edges_from(intnet.source_edges)
-    # G.remove_edges_from([(intnet.sink_name,intnet.source_name)])
-
 def get_epath(npath):
     plen=len(npath)
     return [(npath[i],npath[i+1]) for i in range(plen-1)]
 
 def sum_neg(series):
     return reduce(lambda a,b: a+b if (b<0) else a, series)
+
+######################## PIPELINE
+
+def network_gen_unif(intnet,alpha,filepath):
+    """
+    ### Keywords
+    *`intnet` - interdiction network
+    *`alpha` - percentage of demand to deactivate
+    """
+    dem=intnet.get_demand()
+    active=[j for (j,t),demand in dem.items() if demand>0]
+    sample_size=int(np.ceil(alpha*len(active)))
+    null_nodes=list(np.random.choice(active,sample_size,replace=False))
+    intnet.lights_off(null_nodes)
+    intnet.to_csv(filepath)
+    intnet.lights_on()
+
+def network_gen_bfs(intnet,seed_node,depth,filepath):
+    """
+    ### Keywords
+    *`intnet` - interdiction network
+    *`seed_node` - initial node of BFS
+    *`depth` - depth of BFS
+    """
+    assert seed_node in intnet.G.nodes
+    dem=intnet.get_demand()
+    active=[j for (j,t),demand in dem.items() if demand>0]
+    null_nodes=[node for node in bfs_tree(intnet.G,seed_node) if node in active]
+    null_nodes=null_nodes[:depth]
+    intnet.lights_off(null_nodes)
+    intnet.to_csv(filepath)
+    intnet.lights_on()
+
+# random lights-off function - turn off demands, write to disc
+### uniform dist: turn off alpha% of demands
+### BFS: randomly sample a node with pos demand, turn off demands that aren't within BFS of depth D
+
 
 def main():
     FILEPATH=path.join(get_data_path(),"CTOWN.INP")
