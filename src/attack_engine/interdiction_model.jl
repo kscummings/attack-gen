@@ -80,7 +80,8 @@ end
 function interdiction_model(
         intnet::InterdictionNetwork,
         E_hat::Vector{Symbol},
-        budget::Int64
+        budget::Int64,
+        edge_pair::Dict
     )
     @assert issubset(E_hat,intnet.E)
 
@@ -97,7 +98,9 @@ function interdiction_model(
 
     JuMP.@objective(model,Min,sum(intnet.cap[e]*theta[e] for e in setdiff(intnet.E,E_hat))+sum(intnet.cap[e]*beta[e] for e in E_hat))
 
-    # TODO: INTERDICTION OF ONE DIRECTION APPLIES TO OTHER DIRECTION TOO
+    # interdiction (removal of one removes other direction)
+    JuMP.@constraint(model,sum(x[e] for e in E_hat)<=2*budget)
+    JuMP.@constraint(model,[e for e in keys(edge_pair)], x[e]==x[edge_pair[e]])
 
     model
 end
@@ -118,9 +121,10 @@ function interdiction_decision(
         edge_xwalk::Dict
     )
     # build E_hat
-    E_hat=[edge_id for edge_id in intnet.E if startswith(String(edge_id),"edge")]
+    E_offlimits = [edge_id for edge_id in intnet.E if startswith(String(edge_id),"edge")]
     E_fortified = fortify ? [edge_id for edge_id in intnet.E if intnet.fortified[edge_id]] : []
-    E_hat=vcat(E_hat,E_fortified)
+    E_offlimits=vcat(E_offlimits,E_fortified)
+    E_hat=setdiff(intnet.E,E_offlimits)
 
     # solve, obtain interdiction
     model=interdiction_model(intnet,E_hat,budget)
@@ -131,3 +135,7 @@ end
 
 exw=CSV.read(EDGE_XWALK_FILEPATH, DataFrame)
 exw=Dict((exw[i,:origin],exw[i,:dest])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))
+
+# create forward-backward edge pairs
+phys_edges=[edge_id for edge_id in intnet.E if !startswith(String(edge_id),"edge") & !endswith(String(edge_id),"_rev")]
+edge_pair=Dict(edge_id=>Symbol(join([edge_id,"rev"],"_")) for edge_id in phys_edges)
