@@ -85,7 +85,7 @@ function interdiction_model(
     )
     @assert issubset(E_hat,intnet.E)
 
-    model=JuMP.Model(optimizer_with_attributes(() -> Gurobi.Optimizer(gurobi_env), "OutputFlag"=>0))
+    model=JuMP.Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV), "OutputFlag"=>0))
 
     JuMP.@variable(model,x[e in E_hat],Bin)
     JuMP.@variable(model,beta[e in E_hat],Bin)
@@ -100,7 +100,7 @@ function interdiction_model(
 
     # interdiction (removal of one removes other direction)
     JuMP.@constraint(model,sum(x[e] for e in E_hat)<=2*budget)
-    JuMP.@constraint(model,[e for e in keys(edge_pair)], x[e]==x[edge_pair[e]])
+    JuMP.@constraint(model,[e in intersect(keys(edge_pair),E_hat)], x[e]==x[edge_pair[e]])
 
     model
 end
@@ -118,7 +118,8 @@ function interdiction_decision(
         intnet::InterdictionNetwork,
         budget::Int64,
         fortify::Bool,
-        edge_xwalk::Dict
+        edge_xwalk::Dict,
+        edge_pair::Dict
     )
     # build E_hat
     E_offlimits = [edge_id for edge_id in intnet.E if startswith(String(edge_id),"edge")]
@@ -127,14 +128,21 @@ function interdiction_decision(
     E_hat=setdiff(intnet.E,E_offlimits)
 
     # solve, obtain interdiction
-    model=interdiction_model(intnet,E_hat,budget)
+    model=interdiction_model(intnet,E_hat,budget,edge_pair)
     optimize!(model)
-    x=Dict(e=>JuMP.value(model.obj_dict[:x]) for e in E_hat)
+    x=Dict(e=>JuMP.value(model.obj_dict[:x][e]) for e in E_hat)
+    interdicted=[key for (key,value) in x if (value==1) & !endswith(String(key),"rev")]
+
+    # which sensors to mess with?
+    sensors=[edge_xwalk[e] for e in interdicted]
+    return sensors
 end
+
+################ set up 
 
 
 exw=CSV.read(EDGE_XWALK_FILEPATH, DataFrame)
-exw=Dict((exw[i,:origin],exw[i,:dest])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))
+exw=Dict(Symbol(exw[i,:edge_id])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))
 
 # create forward-backward edge pairs
 phys_edges=[edge_id for edge_id in intnet.E if !startswith(String(edge_id),"edge") & !endswith(String(edge_id),"_rev")]
