@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
+from copy import copy
 from math import pi
 from os import path
 
@@ -156,17 +157,24 @@ class InterdictionNetwork:
         G=self.original_wn.get_network()
         assert [self.reservoir]==reservoirs
 
-        ### build fortified edges (not interdictable)
+        ### build fortified edges (not interdictable) - backwards and forwards
         # fortify reservoir -> tank edges in original network
         H=G.to_undirected()
         path_lengths,paths=nx.single_source_dijkstra(H,self.reservoir,weight="distance")
         tank_paths=[get_epath(paths[tank]) for tank in tanks]
         self.fortified_edges=list(pd.unique([edge for tank_path in tank_paths for edge in tank_path]))
+        self.fortified_edges=self.fortified_edges+[(v,u) for (u,v) in self.fortified_edges]
+        self.fortified_edges=list(pd.unique(self.fortified_edges))
 
         ### build auxiliary graph
         # convert original graph to undirected graph
         assert not any([(v,u) in G.edges for (u,v) in G.edges])
-        backwards=[(v,u,ed) for (u,v,ed) in G.edges(data=True)]
+        backwards=[]
+        for (u,v,ed) in G.edges(data=True):
+            ed_rev=copy(ed)
+            if 'edge_id' in ed.keys():
+                ed_rev['edge_id']="%s_rev"%ed['edge_id'] # unique edge id
+            backwards.append((v,u,ed_rev))
         G.add_edges_from(backwards)
 
         # entire auxiliary graph is directed
@@ -174,6 +182,7 @@ class InterdictionNetwork:
         G.add_node(self.source_name)
         G.add_edge(self.source_name,self.reservoir) # source to reservoir
         self.source_edges=[(self.reservoir,tank) for tank in tanks]
+        self.source_edges.append(self.source_name,self.reservoir)
         G.add_edges_from(self.source_edges)
 
         # build sink and its in-edges from junctions with demand
@@ -226,7 +235,7 @@ class InterdictionNetwork:
         pipe_cap={}
         for u,v,ed in self.G.edges(data=True):
             if 'edge_id' in ed.keys():
-                edge_id=ed['edge_id']
+                edge_id=ed['edge_id'].replace("_rev",'')
                 if edge_id in pipes:
                     pipe_cap[(u,v)]=pi*ed['diameter']**2*vel[edge_id]*TIME_HORIZON/4
 
@@ -290,14 +299,20 @@ class InterdictionNetwork:
 
 
 
-def edge_sensor_xwalk(G,data_path):
+def edge_sensor_xwalk(intnet,data_path):
     """
     Determine ted components corresponding to each sensor set to build edge/sensor xwalk
     (note this might not work anymore post-undirected but doesnt matter bc already built it)
     ### Keyword Arguments
-    *`G` - water network graph (not auxiliary graph)
+    *`intnet` - interdiction network
     *`data_path` - directory containing system xwalk
     """
+    # revert from auxiliary
+    G=intnet.G
+    G.remove_edges_from(intnet.sink_edges)
+    G.remove_edges_from(intnet.source_edges)
+    G.remove_edges_from([(intnet.sink_name,intnet.source_name)])
+
     sensor_xwalk=pd.read_csv(os.path.join(data_path,"sensor_xwalk.csv"))
     tankcol=[col for col in sensor_xwalk if col.startswith('T')]
     assert all(sensor_xwalk[tankcol].sum(axis=0)==1)
@@ -307,35 +322,51 @@ def edge_sensor_xwalk(G,data_path):
         tanks=[tank for tank in tankcol if sensor_xwalk.at[i,tank]==1]
         sensor_switch.update({tank:sensor_set_id for tank in tanks})
 
-    # remove CC edges
-    G.remove_edges_from(CC_EDGES)
+    # remove CC edges, backwards and forwards
+    forward=[(u,v,G.get_edge_data(u,v)) for (u,v) in CC_EDGES]
+    backward=[(v,u,G.get_edge_data(v,u)) for (u,v) in CC_EDGES]
+    G.remove_edges_from(forward)
+    G.remove_edges_from(backward)
 
     # find connected components
     edge_sensor_dict={}
     for cc in nx.weakly_connected_components(G):
-        cc_edge_set=G.subgraph(cc).edges
+        G_sub=G.subgraph(cc)
+        cc_edge_ids=nx.get_edge_attributes(G_sub,"edge_id")
+        cc_edge_ids=list(cc_edge_ids.values())
         for tank in tankcol:
             if tank in cc:
-                edge_sensor_dict.update({edge:sensor_switch[tank] for edge in cc_edge_set})
+                edge_sensor_dict.update({edge_id:sensor_switch[tank] for edge_id in cc_edge_ids})
 
-    # manually add removed edges
-    edge_sensor_dict.update({
-        ("J288","J300"):sensor_switch["T3"],
-        ("J302","J307"):sensor_switch["T6"],
-        ("J332","J301"):sensor_switch["T5"],
-        ("J422","J420"):sensor_switch["T2"]
+    # manually add removed edges, forward and backward
+    cc_dict={
+        'P375':sensor_switch["T3"],
+        'P399':sensor_switch["T6"],
+        'P397':sensor_switch["T5"],
+        'P467':sensor_switch["T2"]
+    }
+    cc_dict.update({
+        'P375_rev':sensor_switch["T3"],
+        'P399_rev':sensor_switch["T6"],
+        'P397_rev':sensor_switch["T5"],
+        'P467_rev':sensor_switch["T2"]
     })
+    edge_sensor_dict.update(cc_dict)
 
     # write the dictionary
     with open(path.join(data_path,"edge_sensor_xwalk.csv"), 'w', newline='') as csvfile:
-        fieldnames=['origin','dest','sensor_set_id']
+        fieldnames=['edge_id','sensor_set_id']
         writer=csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-        for (u,v),sensor_id in edge_sensor_dict.items():
-            writer.writerow({'origin':u,'dest':v,'sensor_set_id':sensor_id})
+        for edge_id,sensor_id in edge_sensor_dict.items():
+            writer.writerow({'edge_id':edge_id,'sensor_set_id':sensor_id})
 
-    # restore graph
-    G.add_edges_from(CC_EDGES)
+    # restore graph? 
+    # G.add_edges_from(forward)
+    # G.add_edges_from(backward)
+    # G.remove_edges_from(intnet.sink_edges)
+    # G.remove_edges_from(intnet.source_edges)
+    # G.remove_edges_from([(intnet.sink_name,intnet.source_name)])
 
 def get_epath(npath):
     plen=len(npath)
