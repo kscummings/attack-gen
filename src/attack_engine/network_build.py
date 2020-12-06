@@ -9,6 +9,7 @@ import wntr
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+import os
 
 from copy import copy
 from math import pi
@@ -145,11 +146,7 @@ class InterdictionNetwork:
         ### initialize
         # water network
         self.original_wn=WaterNetwork(filepath)
-
-        # full week of simulated demand
         tanks,reservoirs,junctions=self.original_wn.get_nodes()
-        results=self.original_wn.sim_demand()
-        dem=results.node['demand']
 
         # build network
         self.source_name="source"
@@ -196,27 +193,21 @@ class InterdictionNetwork:
 
         # finalize
         self.G=G
+
+        # build demands and capacities
+        self.sim()
+
+
+    def sim(self):
+        """
+        simulate new world over network and update network
+        """
+        results=self.original_wn.sim_demand()
         self.update_flows(results)
-
-    def lights_off(self,null_nodes):
-        """
-        deactivate demands in given set of nodes
-        ### Keyword Arguments
-        *`null_nodes` - zero out demand of the nodes in this list
-        """
-        dem=nx.get_edge_attributes(self.G,"demand")
-        dem.update({(j,self.sink_name):0 for j in null_nodes})
-        nx.set_edge_attributes(self.G,dem,"demand")
-
-    def lights_on(self):
-        """
-        ensure all demands activated
-        """
-        nx.set_edge_attributes(self.G,self.original_dem,"demand")
 
     def update_flows(self,results):
         """
-        reset flows through network
+        reset flows through network, given simulated demand
         update in network: demand, tank and pipe capacities (all edge cap)
         """
         dem=results.node['demand']
@@ -250,6 +241,22 @@ class InterdictionNetwork:
         capdict=pipe_cap
         capdict.update({(r,t):tank_cap[t] for (r,t) in self.source_edges if t!=self.reservoir})
         nx.set_edge_attributes(self.G,capdict,"capacity")
+
+    def lights_off(self,null_nodes):
+        """
+        deactivate demands in given set of nodes
+        ### Keyword Arguments
+        *`null_nodes` - zero out demand of the nodes in this list
+        """
+        dem=nx.get_edge_attributes(self.G,"demand")
+        dem.update({(j,self.sink_name):0 for j in null_nodes})
+        nx.set_edge_attributes(self.G,dem,"demand")
+
+    def lights_on(self):
+        """
+        ensure all demands activated
+        """
+        nx.set_edge_attributes(self.G,self.original_dem,"demand")
 
     def get_cap(self):
         """
@@ -420,7 +427,71 @@ def network_gen_bfs(intnet,seed_node,edge_depth,filepath):
     intnet.lights_on()
     return keep, null_nodes
 
+def trial_loop(intnet_inputfile, output_dir, filename_root, num_networks, unif_args, bfs_args):
+    """
+    Generate a bunch of networks to interdict, write to disc.
+    ### Keywords
+    *`intnet_inputfile` - read in wntr
+    *`output_dir` - write networks here
+    *`filename_root` - beginning of each network filename
+    *`num_networks` - number of demands to simulate
+    *`unif_args` - num_trials, percentages
+    *`bfs_args` - num_trials, edge_depths
+    ### Writes
+    *full network for each network trial (CSV)
+    *lights-off network for each unif and bfs trial (CSV)
+    *trials summary (CSV)
+    """
+    # initialize
+    unif_trials,percentages=unif_args
+    bfs_trials,edge_depths=bfs_args
+    intnet=InterdictionNetwork(intnet_inputfile)
 
+    # set up directory - don't overwrite old results!
+    try:
+        os.makedirs(output_dir)
+    except OSError as e:
+        raise e
+    rootpath=path.join(output_dir,filename_root)
+
+    # build trials and record trial info
+    trial=0
+    trial_type,trial_param=[],[]
+    for _ in range(num_networks):
+        intnet.sim()
+        trial+=1
+        intnet.to_csv("%s_%d.csv"%(rootpath,trial))
+
+        # full trial info
+        trial_type.append("full")
+        trial_param.append("")
+
+        # unif trials
+        for _ in range(unif_trials):
+            for alpha in percentages:
+                trial+=1
+                filepath="%s_%d.csv"%(rootpath,trial)
+                network_gen_unif(intnet,alpha,filepath)
+                trial_type.append("unif")
+                trial_param.append(alpha)
+
+        # bfs trials
+        for edge_depth in edge_depths:
+            # generate all the seeds first to ensure no duplicates
+            dem=intnet.get_demand()
+            active=[j for (j,t),demand in dem.items() if demand>0]
+            seed_nodes=np.random.choice(active,bfs_trials,replace=False)
+            for seed_node in seed_nodes:
+                trial+=1
+                filepath="%s_%d.csv"%(rootpath,trial)
+                network_gen_bfs(intnet,seed_node,edge_depth,filepath)
+                trial_type.append("bfs")
+                trial_param.append(edge_depth)
+
+    # record trial info
+    trials=[i for i in range(1,trial+1)]
+    trial_dat=pd.DataFrame(np.vstack((trials,trial_type,trial_param)),columns=["trial_id","trial_type","trial_param"])
+    trial_dat.to_csv(path.join(output_dir,"trial_info.csv"))
 
 
 def main():
