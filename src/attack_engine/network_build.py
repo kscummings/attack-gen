@@ -183,7 +183,7 @@ class InterdictionNetwork:
         G.add_node(self.source_name)
         G.add_edge(self.source_name,self.reservoir) # source to reservoir
         self.source_edges=[(self.reservoir,tank) for tank in tanks]
-        self.source_edges.append(self.source_name,self.reservoir)
+        self.source_edges.append((self.source_name,self.reservoir))
         G.add_edges_from(self.source_edges)
 
         # build sink and its in-edges from junctions with demand
@@ -248,7 +248,7 @@ class InterdictionNetwork:
 
         # build capacity dict
         capdict=pipe_cap
-        capdict.update({(r,t):tank_cap[t] for (r,t) in self.source_edges})
+        capdict.update({(r,t):tank_cap[t] for (r,t) in self.source_edges if t!=self.reservoir})
         nx.set_edge_attributes(self.G,capdict,"capacity")
 
     def get_cap(self):
@@ -392,25 +392,35 @@ def network_gen_unif(intnet,alpha,filepath):
     intnet.to_csv(filepath)
     intnet.lights_on()
 
-def network_gen_bfs(intnet,seed_node,depth,filepath):
+def network_gen_bfs(intnet,seed_node,edge_depth,filepath):
     """
     ### Keywords
     *`intnet` - interdiction network
     *`seed_node` - initial node of BFS
-    *`depth` - depth of BFS
+    *`edge_depth` - depth of BFS
     """
     assert seed_node in intnet.G.nodes
     dem=intnet.get_demand()
+    _,_,junctions=intnet.original_wn.get_nodes()
     active=[j for (j,t),demand in dem.items() if demand>0]
-    null_nodes=[node for node in bfs_tree(intnet.G,seed_node) if node in active]
-    null_nodes=null_nodes[:depth]
+
+    # build  bfs tree and grab nodes to desired depth
+    bt=bfs_tree(intnet.G,seed_node)
+    keep,level=[seed_node],[seed_node]
+    for cur_depth in range(edge_depth):
+        # sweep next tier of BFS tree
+        level=[n for node in level for n in bt.neighbors(node)]
+        keep=np.hstack((keep,level))
+    keep=[n for n in list(keep) if n in junctions]
+
+    # to target these nodes, turn off everything else
+    null_nodes=[n for n in active if n not in keep]
     intnet.lights_off(null_nodes)
     intnet.to_csv(filepath)
     intnet.lights_on()
+    return keep, null_nodes
 
-# random lights-off function - turn off demands, write to disc
-### uniform dist: turn off alpha% of demands
-### BFS: randomly sample a node with pos demand, turn off demands that aren't within BFS of depth D
+
 
 
 def main():
