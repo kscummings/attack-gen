@@ -1,8 +1,16 @@
-using CSV, DataFrames, Gurobi, JuMP
+using CSV, DataFrames, Gurobi, JuMP, Glob
 """
 Build and solve interdiction model
 Translate interdiction results into attack strategies
 """
+
+############ INPUTS
+
+BUDGETS=[i for i in 1:5]
+INPUT_DIR="test_71713"
+
+
+############ MODEL
 
 function get_data_path()
     filepath=joinpath(dirname(dirname(dirname(@__DIR__))),"data-path.txt")
@@ -18,6 +26,7 @@ end
 
 GUROBI_ENV=Gurobi.Env()
 EDGE_XWALK_FILEPATH=joinpath(get_data_path(),"edge_sensor_xwalk.csv")
+INPUT_PATH=joinpath(get_data_path(),INPUT_DIR)
 
 struct InterdictionNetwork
     # full topology
@@ -138,12 +147,58 @@ function interdiction_decision(
     return sensors
 end
 
-################ set up 
+# list all the files in the test thing
+# update all of them
+# write the sensor set decision to file
+# trial id, one-hot of sensor sets ? yea
+"""
+Read in all of the networks written to a directory
+Interdict them
+write the results to the same directory
+### Keywords
+*`trials_dir` - directory containing networks
+*`budgets` - list of interdiction budgets to test
+*`edge_xwalk` - map between edges and sensor sets
+*`edge_pair` - edge ids of directed edges that are paired in undirected graph
+"""
+function all_trials(
+        trials_dir::String,
+        budgets::Vector{Int64},
+        edge_xwalk::Dict,
+        edge_pair::Dict
+    )
+    # one of these is trial_info
+    trial_info_filename=Glob.glob("trial_info.csv",trials_dir)[1]
+    filenames=Glob.glob("*.csv",trials_dir)
+    filter!(f->f!=trial_info_filename,filenames)
+
+    trials,budgets,fortify,sensors=[],[],[],[]
+    for f in filenames
+        intnet=InterdictionNetwork(f)
+        trial_num=match(r"(\d+)", replace(f,trials_dir=>""))
+        trial_num=parse(Int,trial_num.match)
+        push!(trials,trial_num)
+        for budget in budgets
+            for fort in [true,false]
+                s=interdiction_decision(intnet,budget,fort,edge_xwalk,edge_pair)
+                push!(budgets,budget)
+                push!(fortify,fort)
+                push!(sensors,[i in s for i in 1:5])
+            end
+        end
+    end
+end
 
 
-exw=CSV.read(EDGE_XWALK_FILEPATH, DataFrame)
-exw=Dict(Symbol(exw[i,:edge_id])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))
+############ PIPELINE
 
-# create forward-backward edge pairs
-phys_edges=[edge_id for edge_id in intnet.E if !startswith(String(edge_id),"edge") & !endswith(String(edge_id),"_rev")]
-edge_pair=Dict(edge_id=>Symbol(join([edge_id,"rev"],"_")) for edge_id in phys_edges)
+function main()
+    exw=CSV.read(EDGE_XWALK_FILEPATH, DataFrame)
+    exw=Dict(Symbol(exw[i,:edge_id])=>exw[i,:sensor_set_id] for i in 1:nrow(exw))
+
+    # create forward-backward edge pairs
+    phys_edges=[edge_id for edge_id in intnet.E if !startswith(String(edge_id),"edge") & !endswith(String(edge_id),"_rev")]
+    edge_pair=Dict(edge_id=>Symbol(join([edge_id,"rev"],"_")) for edge_id in phys_edges)
+
+    all_trials(INPUT_PATH,BUDGETS,exw,edge_pair)
+end
