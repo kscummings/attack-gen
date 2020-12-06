@@ -30,13 +30,13 @@ OUTPUT_DIR="test_%s"%(rand_string)
 FILENAME_ROOT="network"
 DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
 
-NUM_SIM=50
+NUM_SIM=1
 
 PERCENTAGES=[0.25,0.5,0.75]
-NUM_UNIF=10
+NUM_UNIF=1
 
 EDGE_DEPTHS=[5,10,15,20]
-NUM_BFS=10
+NUM_BFS=1
 
 
 ######################## CONSTANTS

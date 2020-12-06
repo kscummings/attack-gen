@@ -6,9 +6,8 @@ Translate interdiction results into attack strategies
 
 ############ INPUTS
 
-BUDGETS=[i for i in 1:5]
-INPUT_DIR="test_71713"
-
+BUDGETS=[i for i in 1:2]#1:5
+INPUT_DIR="test_51761"
 
 ############ MODEL
 
@@ -24,9 +23,10 @@ function get_data_path()
     end
 end
 
+DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal"#get_data_path()
 GUROBI_ENV=Gurobi.Env()
-EDGE_XWALK_FILEPATH=joinpath(get_data_path(),"edge_sensor_xwalk.csv")
-INPUT_PATH=joinpath(get_data_path(),INPUT_DIR)
+EDGE_XWALK_FILEPATH=joinpath(DATA_PATH,"edge_sensor_xwalk.csv")
+INPUT_PATH=joinpath(DATA_PATH,INPUT_DIR)
 
 struct InterdictionNetwork
     # full topology
@@ -172,7 +172,8 @@ function all_trials(
     filenames=Glob.glob("*.csv",trials_dir)
     filter!(f->f!=trial_info_filename,filenames)
 
-    trials,budgets,fortify,sensors=[],[],[],[]
+    trials,budgets,fortify=[],[],[]
+    s1,s2,s3,s4,s5=[],[],[],[],[] # there's definitely a better way to do this
     for f in filenames
         intnet=InterdictionNetwork(f)
         trial_num=match(r"(\d+)", replace(f,trials_dir=>""))
@@ -183,10 +184,21 @@ function all_trials(
                 s=interdiction_decision(intnet,budget,fort,edge_xwalk,edge_pair)
                 push!(budgets,budget)
                 push!(fortify,fort)
-                push!(sensors,[i in s for i in 1:5])
+
+                # wow you are so good at coding kayla
+                push!(s1,1 in s)
+                push!(s2,2 in s)
+                push!(s3,3 in s)
+                push!(s4,4 in s)
+                push!(s5,5 in s)
             end
         end
     end
+
+    # build dataframe
+    res=DataFrames.DataFrame(trials=trials,budget=budgets,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5)
+    CSV.write(res,joinpath(trials_dir,"results.csv"))
+
 end
 
 
@@ -202,3 +214,6 @@ function main()
 
     all_trials(INPUT_PATH,BUDGETS,exw,edge_pair)
 end
+
+
+main()
