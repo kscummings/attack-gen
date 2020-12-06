@@ -3,23 +3,48 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
+import os
+import random
+import string
 import sys
 import wntr
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
-import os
+import pandas as pd
 
 from copy import copy
 from math import pi
 from networkx.algorithms import bfs_tree
 from os import path
 
-sys.path.append('..')
-from src.utils import get_data_path
+# sys.path.append('..')
+# from src.utils import get_data_path
 
-### constants
+######################## INPUTS
+
+letters=string.digits
+rand_string=''.join(random.choice(letters) for i in range(5))
+OUTPUT_DIR="test_%s"%(rand_string)
+FILENAME_ROOT="network"
+DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
+
+NUM_SIM=1
+
+PERCENTAGES=[0.25,0.5,0.75]
+NUM_UNIF=5
+
+EDGE_DEPTHS=[5,10,15,20]
+NUM_BFS=5
+
+
+######################## CONSTANTS
+
+UNIF_ARGS=(NUM_UNIF,PERCENTAGES)
+BFS_ARGS=(NUM_BFS,EDGE_DEPTHS)
+INPUT_PATH=path.join(DATA_PATH,"CTOWN.INP")
+OUTPUT_PATH=path.join(DATA_PATH,OUTPUT_DIR)
 CC_EDGES=[("J302","J307"),("J332","J301"),("J288","J300"),("J422","J420")]
 NETWORK_COL=['edge_id','origin','dest','dem','capacity','source','sink','fortified']
 WATER_VELOCITY=2.4 #m/s
@@ -310,6 +335,7 @@ class InterdictionNetwork:
 
 
 
+
 ########################HELPERS
 
 
@@ -490,12 +516,12 @@ def trial_loop(intnet_inputfile, output_dir, filename_root, num_networks, unif_a
 
     # record trial info
     trials=[i for i in range(1,trial+1)]
-    trial_dat=pd.DataFrame(np.vstack((trials,trial_type,trial_param)),columns=["trial_id","trial_type","trial_param"])
+    trial_dat=pd.DataFrame(np.vstack((trials,trial_type,trial_param)).T,columns=["trial_id","trial_type","trial_param"])
     trial_dat.to_csv(path.join(output_dir,"trial_info.csv"))
 
 
-def main():
-    FILEPATH=path.join(get_data_path(),"CTOWN.INP")
+def plots():
+    FILEPATH=path.join(DATA_PATH,"CTOWN.INP")
     wn=WaterNetwork(FILEPATH)
     res=wn.sim_demand()
     dem=res.node['demand']
@@ -505,18 +531,20 @@ def main():
     dem=dem.drop(np.hstack((tanks,reservoirs)),axis=1)
 
     # look at time series
-    # res.plot()
-    # supply.plot()
-    # plt.show()
-    # dem.plot()
-    # plt.show()
-    #
-    # # average supply and demand
-    # plt.hist(supply.mean(axis=0),density=True,bins=30)
-    # plt.show()
-    # plt.hist(dem.mean(axis=0),density=True,bins=30)
-    # plt.show()
+    res.plot()
+    supply.plot()
+    plt.show()
+    dem.plot()
+    plt.show()
 
+    # average supply and demand
+    plt.hist(supply.mean(axis=0),density=True,bins=30)
+    plt.show()
+    plt.hist(dem.mean(axis=0),density=True,bins=30)
+    plt.show()
+
+def main():
+    trial_loop(INPUT_PATH, OUTPUT_PATH, FILENAME_ROOT, NUM_SIM, UNIF_ARGS, BFS_ARGS)
 
 if __name__ == '__main__':
     main()
