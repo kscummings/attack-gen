@@ -6,7 +6,7 @@ Translate interdiction results into attack strategies
 
 ############ INPUTS
 
-BUDGETS=[i for i in 1:2]#1:5
+BUDGETS=[i for i in 0:10]
 INPUT_DIR="test_13756"
 
 ############ MODEL
@@ -138,13 +138,14 @@ function interdiction_decision(
 
     # solve, obtain interdiction
     model=interdiction_model(intnet,E_hat,budget,edge_pair)
-    optimize!(model)
+    JuMP.optimize!(model)
     x=Dict(e=>JuMP.value(model.obj_dict[:x][e]) for e in E_hat)
     interdicted=[key for (key,value) in x if (value==1) & !endswith(String(key),"rev")]
 
     # which sensors to mess with?
     sensors=[edge_xwalk[e] for e in interdicted]
-    return sensors
+    obj = JuMP.termination_status(model)==MOI.OPTIMAL ? JuMP.objective_value(model) : NaN
+    return interdicted, sensors, obj
 end
 
 """
@@ -168,20 +169,25 @@ function all_trials(
     filenames=Glob.glob("*.csv",trials_dir)
     filter!(f -> f!=trial_info_filename[1],filenames)
 
-    trials,b,fortify=[],[],[]
+    trials_res,b,fortify,objective_values=[],[],[],[]
     s1,s2,s3,s4,s5=[],[],[],[],[] # there's definitely a better way to do this
+    interdicted,trials_idct=[],[]
     for f in filenames
         intnet=InterdictionNetwork(f)
         trial_num=match(r"(\d+)", replace(f,trials_dir=>""))
         trial_num=parse(Int,trial_num.match)
         for budget in budgets
             for fort in [true,false]
-                s=interdiction_decision(intnet,budget,fort,edge_xwalk,edge_pair)
+                idct,s,obj=interdiction_decision(intnet,budget,fort,edge_xwalk,edge_pair)
+                # for interdiction outputs
+                append!(interdicted,idct)
+                append!(trials_idct,[trial_num for _ in 1:length(idct)])
+
+                # for sensor outputs
                 push!(b,budget)
                 push!(fortify,fort)
-                push!(trials,trial_num)
-
-                # wow you are so good at coding kayla
+                push!(trials_res,trial_num)
+                push!(objective_values,obj)
                 if !isempty(s)
                     push!(s1,sum(i==1 for i in s))
                     push!(s2,sum(i==2 for i in s))
@@ -199,9 +205,13 @@ function all_trials(
         end
     end
 
-    # build dataframe
-    res=DataFrames.DataFrame(trial_id=trials,budget=b,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5)
+    # build dataframes
+    res=DataFrames.DataFrame(trial_id=trials_res,budget=b,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5,obj=objective_values)
+    interd=DataFrames.DataFrame(trial_id=trials_idct,edge_id=interdicted)
+
+    #leftjoin!(res,trial_info,on=:trial_id)
     CSV.write(joinpath(trials_dir,"results.csv"),res)
+    CSV.write(joinpath(trials_dir,"interdicted.csv"),interd)
 end
 
 
