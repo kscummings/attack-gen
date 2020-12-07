@@ -10,7 +10,13 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
 TAGS=['L','F','S','P']
-SENSOR_SETS=["s1","s2","s3","s4","s5"]
+SENSOR_SETS={
+    "s1":1,
+    "s2":2,
+    "s3":3,
+    "s4":4,
+    "s5":5
+ }
 
 
 ########## preprocess raw data
@@ -83,6 +89,7 @@ def get_rolled_attack_data(data_path,std_pct=0.1,window_length=24):
 
 def get_sensor_sets(data_path,names):
     """
+    don't swap switches
     ### Keywords
     *`data_path` - data location
     *`names` - batadal data columns
@@ -94,6 +101,7 @@ def get_sensor_sets(data_path,names):
     sensors=dat.columns[dat.columns!='sensor_set_id']
     sensor_set={dat.at[i,"sensor_set_id"]:[s for s in sensors if dat.at[i,s]==1] for i in range(dat.shape[0])}
     sensor_set={i:[name for name in names if any([sensor in name for sensor in sensor_set])] for (i,sensor_set) in sensor_set.items()}
+    sensor_set={i:[name for name in ss if not name.startswith("S")] for (i,ss) in sensor_set.items()}
     sensor_set={i:[np.where(names==name)[0][0] for name in ss] for (i,ss) in sensor_set.items()}
     return sensor_set
 
@@ -105,13 +113,13 @@ def read_sensordist(res_path):
         trial_param=sdist.at[i,"trial_param"]
         fortify=sdist.at[i,"fortify"]
         budget=sdist.at[i,"budget"]
-        if trial_type!="full":
-            sd={ss:sdist.at[i,ss] for ss in SENSOR_SETS}
+        if (trial_type!="full") & (budget!=0):
+            sd={ss_id:sdist.at[i,ss_var] for ss_var,ss_id in SENSOR_SETS.items()}
             sd={ss:total/sum(sd.values()) for (ss,total) in sd.items()}
             dists[(trial_type,trial_param,budget,fortify)]=sd
     return dists
 
-######## function to perform a swap
+######## generate synthetic data
 
 def manual_attacks(x,names,sdist,sensorset_dict):
     '''
@@ -121,7 +129,7 @@ def manual_attacks(x,names,sdist,sensorset_dict):
     #`x`-data to transform
     #`names` - feature labels
     *`sdist` - distribution over sensor sets
-    *`sensor_dict` - (id => list of sensor variable names)
+    *`sensorset_dict` - (id => list of sensor variable names)
     '''
     features=x.copy()
     m=len(features)
@@ -131,8 +139,15 @@ def manual_attacks(x,names,sdist,sensorset_dict):
     sdist={i:int(np.floor(p*m)) for (i,p) in sdist.items()}
     sensorsets=list(sdist.keys())
 
+    # get observations to swap for each
+    indices=[i for i in range(sum(sdist.values()))]
+    np.random.shuffle(indices)
+    breaks=np.cumsum(list(sdist.values()))
+    breaks=[0]+list(breaks[:-1])+[m]
+    swap_ind={i:indices[breaks[(i-1)]:breaks[i]] for i in range(1,6)}
+
+    # perform swaps from each sensor set
     for ss in sensorsets:
-        # perform sdist[ss] swaps
         # get features to swap in each observation
         swap_pair=np.stack([np.random.choice(sensorset_dict[ss],size=2,replace=False) for _ in range(sdist[ss])])
 
@@ -141,20 +156,23 @@ def manual_attacks(x,names,sdist,sensorset_dict):
         att_start=list(np.random.choice(range(window_length-att_len[k]+1),size=1)[0] for k in range(sdist[ss]))
         att_end=att_start+att_len
 
-        # perform the swaps
-        for k in np.arange(m):
+        # perform the swaps on a subset of the data
+        for k in range(len(swap_ind[ss])):
             start=att_start[k]
             end=att_end[k]
+            k_ind=swap_ind[ss][k]
 
             # check if swap is "good enough",
             # i.e. the difference between the swapped readings is non-negligible (greater than 0.1)
-            swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-features[k,start:end,swap_pair[k,1]],1)!=0)
+            swap_quality=np.any(np.round(features[k_ind,start:end,swap_pair[k,0]]-features[k_ind,start:end,swap_pair[k,1]],1)!=0)
             while not swap_quality:
                 sensor_type[k]=np.random.choice(TAGS,size=1)[0]
                 swap_pair[k]=np.random.choice(sensor_dict[sensor_type[k]],size=2,replace=False)
-                swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-features[k,start:end,swap_pair[k,1]],1)!=0)
+                swap_quality=np.any(np.round(features[k_ind,start:end,swap_pair[k,0]]-features[k_ind,start:end,swap_pair[k,1]],1)!=0)
 
             # do the swap
-            features[k,start:end,swap_pair[k,0]],features[k,start:end,swap_pair[k,1]]=features[k,start:end,swap_pair[k,1]],features[k,start:end,swap_pair[k,0]]
+            temp0,temp1=copy(features[k_ind,start:end,swap_pair[k,0]]),copy(features[k_ind,start:end,swap_pair[k,1]])
+            features[k_ind,start:end,swap_pair[k,0]],features[k_ind,start:end,swap_pair[k,1]]=temp1,temp0
+
 
     return features

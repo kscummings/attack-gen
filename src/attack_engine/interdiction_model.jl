@@ -7,7 +7,7 @@ Translate interdiction results into attack strategies
 ############ INPUTS
 
 BUDGETS=[i for i in 0:10]
-INPUT_DIR="test_13756"
+INPUT_DIR="interdiction_results"
 
 ############ MODEL
 
@@ -209,7 +209,9 @@ function all_trials(
     res=DataFrames.DataFrame(trial_id=trials_res,budget=b,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5,obj=objective_values)
     interd=DataFrames.DataFrame(trial_id=trials_idct,edge_id=interdicted)
 
-    #leftjoin!(res,trial_info,on=:trial_id)
+    trial_info=CSV.read(joinpath(trials_dir,"trial_info.csv"),DataFrame)
+    res=leftjoin(res,trial_info,on=:trial_id)
+
     CSV.write(joinpath(trials_dir,"results.csv"),res)
     CSV.write(joinpath(trials_dir,"interdicted.csv"),interd)
 end
