@@ -329,7 +329,7 @@ class InterdictionNetwork:
         dat['sink']=sink
         dat['fortified']=fortified
         dat['capacity']=capacity
-        dat.to_csv(filepath)
+        dat.to_csv(filepath,index=False)
 
         return dat
 
