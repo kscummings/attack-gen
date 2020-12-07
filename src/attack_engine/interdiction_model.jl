@@ -7,7 +7,7 @@ Translate interdiction results into attack strategies
 ############ INPUTS
 
 BUDGETS=[i for i in 1:2]#1:5
-INPUT_DIR="test_51761"
+INPUT_DIR="test_13756"
 
 ############ MODEL
 
@@ -147,10 +147,6 @@ function interdiction_decision(
     return sensors
 end
 
-# list all the files in the test thing
-# update all of them
-# write the sensor set decision to file
-# trial id, one-hot of sensor sets ? yea
 """
 Read in all of the networks written to a directory
 Interdict them
@@ -168,37 +164,44 @@ function all_trials(
         edge_pair::Dict
     )
     # one of these is trial_info
-    trial_info_filename=Glob.glob("trial_info.csv",trials_dir)[1]
+    trial_info_filename=Glob.glob("trial_info.csv",trials_dir)
     filenames=Glob.glob("*.csv",trials_dir)
-    filter!(f->f!=trial_info_filename,filenames)
+    filter!(f -> f!=trial_info_filename[1],filenames)
 
-    trials,budgets,fortify=[],[],[]
+    trials,b,fortify=[],[],[]
     s1,s2,s3,s4,s5=[],[],[],[],[] # there's definitely a better way to do this
     for f in filenames
         intnet=InterdictionNetwork(f)
         trial_num=match(r"(\d+)", replace(f,trials_dir=>""))
         trial_num=parse(Int,trial_num.match)
-        push!(trials,trial_num)
         for budget in budgets
             for fort in [true,false]
                 s=interdiction_decision(intnet,budget,fort,edge_xwalk,edge_pair)
-                push!(budgets,budget)
+                push!(b,budget)
                 push!(fortify,fort)
+                push!(trials,trial_num)
 
                 # wow you are so good at coding kayla
-                push!(s1,1 in s)
-                push!(s2,2 in s)
-                push!(s3,3 in s)
-                push!(s4,4 in s)
-                push!(s5,5 in s)
+                if !isempty(s)
+                    push!(s1,sum(i==1 for i in s))
+                    push!(s2,sum(i==2 for i in s))
+                    push!(s3,sum(i==3 for i in s))
+                    push!(s4,sum(i==4 for i in s))
+                    push!(s5,sum(i==5 for i in s))
+                else
+                    push!(s1,false)
+                    push!(s2,false)
+                    push!(s3,false)
+                    push!(s4,false)
+                    push!(s5,false)
+                end
             end
         end
     end
 
     # build dataframe
-    res=DataFrames.DataFrame(trials=trials,budget=budgets,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5)
-    CSV.write(res,joinpath(trials_dir,"results.csv"))
-
+    res=DataFrames.DataFrame(trial_id=trials,budget=b,fortify=fortify,s1=s1,s2=s2,s3=s3,s4=s4,s5=s5)
+    CSV.write(joinpath(trials_dir,"results.csv"),res)
 end
 
 
