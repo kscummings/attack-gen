@@ -9,6 +9,8 @@ import pandas as pd
 
 from sklearn.preprocessing import MinMaxScaler
 
+TAGS=['L','F','S','P']
+
 
 ########## preprocess raw data
 
@@ -27,7 +29,6 @@ def roll(x, y, window_length):
         y_rolled[w]=np.any(y[w:(w+window_length)]==1).astype(int)
 
     return (x_rolled,y_rolled)
-
 
 def get_rolled_data(data_path,std_pct=0.1,window_length=24):
     """
@@ -76,10 +77,23 @@ def get_rolled_attack_data(data_path,std_pct=0.1,window_length=24):
     """
     Get training examples to train discriminator
     """
-    (_, _), (attack, y_attack), (_,_) _ = get_rolled_data(data_path,std_pct,window_length)
+    (_,_), (attack, y_attack), (_,_), _ = get_rolled_data(data_path,std_pct,window_length)
     return attack[y_attack==1,:]
 
-
+def get_sensor_xwalk(data_path,names):
+    """
+    ### Keywords
+    *`data_path` - data location
+    *`names` - batadal data columns
+    ### Returns
+    *dict from sensor set id to variable names
+    """
+    filepath=os.path.join(data_path,"sensor_xwalk.csv")
+    dat=pd.read_csv(filepath)
+    sensors=dat.columns[dat.columns!='sensor_set_id']
+    sensor_set={dat.at[i,"sensor_set_id"]:[s for s in sensors if dat.at[i,s]==1] for i in range(dat.shape[0])}
+    sensor_set={i:[name for name in names if any([sensor in name for sensor in sensor_set])] for (i,sensor_set) in sensor_set.items()}
+    return sensor_set
 
 # augment clean data with attacks, given strategy or using default strategy
 # given strategy: manipulating sensor readings according to induced distribution over sensor sets
@@ -98,6 +112,50 @@ def get_rolled_attack_data(data_path,std_pct=0.1,window_length=24):
 
 ######## function to perform a swap
 
+def manual_attacks(x,names,sensorset_dist):
+    '''
+    given clean data, manually transform into naive attacks (swaps)
+    transform all data given
+    ### Keywords
+    #`x`-data to transform
+    #`names` - feature labels
+    *`sensorset_dist` - distribution over sensor sets
+    '''
+    features=x.copy()
+    m=len(features)
+    window_length=features.shape[1]
 
+    # get sensor type for each feature
+    # build dictionary of sensor type => feature indices
+    # note: prefixes of feature names give measurement types (e.g. pressure vs. flow)
+    keys=np.array([str.split(names[i],'_')[0] for i in range(len(names))])
+    sensor_dict={type:np.where(keys==type)[0] for type in TAGS}
+
+    # get features to swap in each observation
+    sensor_type=np.random.choice(TAGS,size=m,replace=True)
+    swap_pair=np.stack([np.random.choice(sensor_dict[type],size=2,replace=False) for type in sensor_type])
+
+    # get random ranges to swap
+    att_len=np.random.choice(np.arange(1,window_length+1),size=m,replace=True)
+    att_start=list(np.random.choice(range(window_length-att_len[k]+1),size=1)[0] for k in range(m))
+    att_end=att_start+att_len
+
+    # perform the swaps
+    for k in np.arange(m):
+        start=att_start[k]
+        end=att_end[k]
+
+        # check if swap is "good enough",
+        # i.e. the difference between the swapped readings is non-negligible (greater than 0.1)
+        swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-features[k,start:end,swap_pair[k,1]],1)!=0)
+        while not swap_quality:
+            sensor_type[k]=np.random.choice(TAGS,size=1)[0]
+            swap_pair[k]=np.random.choice(sensor_dict[sensor_type[k]],size=2,replace=False)
+            swap_quality=np.any(np.round(features[k,start:end,swap_pair[k,0]]-features[k,start:end,swap_pair[k,1]],1)!=0)
+
+        # do the swap
+        features[k,start:end,swap_pair[k,0]],features[k,start:end,swap_pair[k,1]]=features[k,start:end,swap_pair[k,1]],features[k,start:end,swap_pair[k,0]]
+
+    return features
 
 ######## function to perform all swaps according to a distribution
