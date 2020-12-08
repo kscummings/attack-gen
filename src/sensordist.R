@@ -2,7 +2,7 @@ library(tidyverse)
 library(readr)
 
 DATA_PATH<-"/Users/kaylacummings/Dropbox (MIT)/batadal"
-TRIAL_DIR<-"interdiction_results"
+TRIAL_DIR<-"small_batch"
 
 res<-read_csv(file.path(DATA_PATH,TRIAL_DIR,"results.csv"))
 res %>%
@@ -17,5 +17,6 @@ res %>%
             s3=sum(s3,na.rm=TRUE),
             s4=sum(s4,na.rm=TRUE),
             s5=sum(s5,na.rm=TRUE)) %>%
+  ungroup() %>%
   mutate(sdist_id=1:n()) %>%
   write_csv(file.path(DATA_PATH,TRIAL_DIR,"sdist.csv"))

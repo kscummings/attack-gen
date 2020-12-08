@@ -40,15 +40,15 @@ CONSTANTS
 '''
 
 DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
-TRIAL_DIR="interdiction_results"
-OUTPUT_DIR="train_results"
+TRIAL_DIR="small_batch"
+OUTPUT_DIR="train_warmstart"
 SYNTHDATA_DIR="sim_data"
 
 TEST_SIZE=0.3
 BATCH_SIZE=256
 NUM_EPOCHS=80
-NUM_TRIALS=3
-WARM_EPOCHS=50
+NUM_TRIALS=1
+WARM_EPOCHS=80
 
 # front matter ..
 TRIAL_PATH=path.join(DATA_PATH,TRIAL_DIR)
@@ -249,7 +249,7 @@ def train_trials(num_trials,
     _,attack,test,_=get_rolled_data(batadal_data_dir)
 
     record_ind=0
-    for fn in synth_filenames[:3]:
+    for fn in synth_filenames:
         # get data
         with open(fn,"rb") as f:
             synth=pickle.load(f)
@@ -287,7 +287,9 @@ def main():
                  output_dir=OUTPUT_PATH,
                  synth_data_dir=SYNTHDATA_PATH,
                  batadal_data_dir=DATA_PATH,
+                 warm_start=True,
                  epochs=NUM_EPOCHS,
+                 warm_epochs=WARM_EPOCHS,
                  test_size=0.3,
                  batch_size=256)
 

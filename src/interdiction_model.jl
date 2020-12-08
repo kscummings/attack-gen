@@ -6,8 +6,8 @@ Translate interdiction results into attack strategies
 
 ############ INPUTS
 
-BUDGETS=[i for i in 0:10]
-INPUT_DIR="interdiction_results"
+BUDGETS=[i for i in 0:5]
+INPUT_DIR="small_batch"
 
 ############ MODEL
 

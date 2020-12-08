@@ -25,18 +25,19 @@ from os import path
 ######################## INPUTS
 
 letters=string.digits
-rand_string=''.join(random.choice(letters) for i in range(5))
-OUTPUT_DIR="test_%s"%(rand_string)
+# rand_string=''.join(random.choice(letters) for i in range(5))
+# OUTPUT_DIR="test_%s"%(rand_string)
+OUTPUT_DIR="small_batch"
 FILENAME_ROOT="network"
 DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
 
-NUM_SIM=1
+NUM_SIM=100
 
 PERCENTAGES=[0.25,0.5,0.75]
-NUM_UNIF=1
+NUM_UNIF=10
 
-EDGE_DEPTHS=[5,10,15,20]
-NUM_BFS=1
+EDGE_DEPTHS=[5,10,15]
+NUM_BFS=10
 
 
 ######################## CONSTANTS
@@ -517,7 +518,7 @@ def trial_loop(intnet_inputfile, output_dir, filename_root, num_networks, unif_a
     # record trial info
     trials=[i for i in range(1,trial+1)]
     trial_dat=pd.DataFrame(np.vstack((trials,trial_type,trial_param)).T,columns=["trial_id","trial_type","trial_param"])
-    trial_dat.to_csv(path.join(output_dir,"trial_info.csv"))
+    trial_dat.to_csv(path.join(output_dir,"trial_info.csv"),index=False)
 
 
 def plots():

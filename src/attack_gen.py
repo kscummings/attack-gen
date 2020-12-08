@@ -168,8 +168,7 @@ def manual_attacks(x,names,sdist,sensorset_dict):
                 # i.e. the difference between the swapped readings is non-negligible (greater than 0.1)
                 swap_quality=np.any(np.round(features[k_ind,start:end,swap_pair[k,0]]-features[k_ind,start:end,swap_pair[k,1]],1)!=0)
                 while not swap_quality:
-                    sensor_type[k]=np.random.choice(TAGS,size=1)[0]
-                    swap_pair[k]=np.random.choice(sensor_dict[sensor_type[k]],size=2,replace=False)
+                    swap_pair[k]=np.random.choice(sensorset_dict[ss],size=2,replace=False)
                     swap_quality=np.any(np.round(features[k_ind,start:end,swap_pair[k,0]]-features[k_ind,start:end,swap_pair[k,1]],1)!=0)
 
                 # do the swap
