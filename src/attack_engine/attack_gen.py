@@ -211,6 +211,6 @@ def data_generation(data_path,trials_dir,num_gen):
 
             # preserve
             data=(sim_feat,sim_labels)
-            pickle_fp=path.join(output_dir,"sim_data_%d_%d.pickle"%(sdist_id,i))
+            pickle_fp=path.join(output_dir,"sim_data_%d_%d.pickle"%(sdist_id,i+1))
             with open(pickle_fp, "wb") as f:
                 pickle.dump(data, f)
