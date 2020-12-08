@@ -4,22 +4,28 @@ from __future__ import print_function
 
 import argparse
 import os
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
+import tensorflow as tf
+
+from glob import glob
 from itertools import chain
 
-from keras.layers import Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D
-from keras.models import Model, Sequential
-from keras.losses import categorical_crossentropy, binary_crossentropy
-from keras.utils import plot_model, to_categorical
-from keras import backend as K
-from keras.regularizers import l2
-from keras.optimizers import sgd
-from keras.callbacks import EarlyStopping
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, BatchNormalization, Activation, Dropout, Conv1D, Flatten, MaxPooling1D
+from tensorflow.keras.losses import categorical_crossentropy, binary_crossentropy
+from tensorflow.keras.utils import plot_model, to_categorical
+from tensorflow.keras import backend as K
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.callbacks import EarlyStopping
 
 from scipy.stats import multivariate_normal
 
@@ -31,21 +37,28 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
+from attack_gen import get_rolled_data
+
 
 '''
 CONSTANTS
 '''
 
+DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
+TRIAL_DIR="interdiction_results"
+OUTPUT_DIR="train_results"
+
 TEST_SIZE=0.3
 BATCH_SIZE=256
-MODELS_DIR="best_models"
-OUTPUT_DIR="final_results"
 NUM_EPOCHS=80
 NUM_TRIALS=3
 
-'''
-MAIN MODEL
-'''
+# front matter ..
+TRIAL_PATH=path.join(DATA_PATH,TRIAL_DIR)
+OUTPUT_PATH=path.join(DATA_PATH,TRIAL_DIR,OUTPUT_DIR)
+tf.compat.v1.disable_eager_execution()
+
+
 
 def build_attack_detection_model(conv_layers = [50,50,50],
                                  dense_layers = [10,10],
@@ -59,7 +72,7 @@ def build_attack_detection_model(conv_layers = [50,50,50],
                                  reg = .00,
                                  compile = True):
     """
-    main classifier
+    CNN classifier
     """
     model = Sequential()
     model.add(Conv1D(input_shape=input_shape,
@@ -98,7 +111,7 @@ def build_attack_detection_model(conv_layers = [50,50,50],
 
     if compile:
         model.add(Dense(num_classes, activation = 'softmax'))
-        opt = sgd(lr = learning_rate,
+        opt = SGD(lr = learning_rate,
                   clipnorm = 1. )
         model.compile(loss = 'sparse_categorical_crossentropy',
                       optimizer = opt,
@@ -107,11 +120,6 @@ def build_attack_detection_model(conv_layers = [50,50,50],
     return model
 
 
-'''
-function to train model once given data
-function to test model on official test data
-loop function to get average results for one data generation model but multiple draws from the model, record results
-'''
 
 def train_attack_gen(data,
                      output_dir,
@@ -119,10 +127,14 @@ def train_attack_gen(data,
                      test_size=0.3,
                      batch_size=256,
                      w=np.array([1,1])):
-    '''
-    train one model
-    '''
-    os.makedirs(output_dir,exist_ok=True)
+    """
+    Train CNN
+    """
+    try:
+        os.makedirs(output_dir,exist_ok=True)
+    except OSError as e:
+        raise e
+
     (X,y)=data
     X_tr,X_val,y_tr,y_val=train_test_split(X,y,stratify=y,test_size=test_size,shuffle=True)
 
@@ -158,7 +170,7 @@ def get_pred(prediction):
 
 def train_trials(num_trials,
                  output_dir,
-                 models_dir,
+                 data_dir,
                  epochs=100,
                  test_size=0.3,
                  batch_size=256):
@@ -166,34 +178,30 @@ def train_trials(num_trials,
     train attack detection model multiple times, for multiple data generation models
     predict test data with each and record results in global csv
     inputs
-    #   num_trials - number of models to train, per data generation model
-    #   output_dir - directory to store the results
-    #   models_dir - directory where data generation models are stored
-    #   epochs - number of epochs per training session
-    #   test_size - proportion of training data to use for model validation
+    *`num_trials`-number of models to train per dataset
+    *`output_dir`-directory to store the results
+    *`data_dir`-directory where synthetic training datasets are stored
+    *`epochs`-number of epochs per training session
+    *`test_size`-proportion of training data to use for model validation
     '''
-    os.makedirs(output_dir,exist_ok=True)
-    r=pd.DataFrame(['model']*4*num_trials,columns=['model_type'])
+    # don't overwrite
+    try:
+        os.makedirs(output_dir,exist_ok=False)
+    except OSError as e:
+        raise e
+
     results=pd.DataFrame(np.zeros((4*num_trials,9)),
         columns=['loss','val_loss','acc','val_acc','test_acc','test_tn','test_fp','test_fn','test_tp'])
     results=pd.concat([r,results],axis=1)
     results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
 
     # get data
-    (clean,y_clean),(attack,y_attack),names=format_data.get_rolled_data()
-    test,y_test=format_data.get_rolled_test_data()
+    (clean,y_clean),(attack,y_attack),(test,y_test),names=get_rolled_data(data_path)
 
-    # get weights
-    decoder_weights=os.path.join(models_dir,"decoder.h5")
-    classifier_weights=os.path.join(models_dir,"classifier.h5")
-    clean_decoder_weights=os.path.join(models_dir,"clean_decoder.h5")
-
-    w=class_weight.compute_class_weight('balanced',np.unique(y_attack),y_attack)
-
-    for n in np.arange(num_trials):
+    for n in range(num_trials):
 
         ########################## REAL DATA ONLY
-        current_dir=os.path.join(output_dir,"baseline_{}".format(n+1))
+        current_dir=os.path.join(output_dir,"baseline_%d"%(n+1))
         train_attack_gen(data=(attack,y_attack),
                          output_dir=current_dir,
                          epochs=epochs,
@@ -291,6 +299,8 @@ def main():
                  epochs=NUM_EPOCHS,
                  test_size=TEST_SIZE,
                  batch_size=BATCH_SIZE)
+
+
 
 if __name__ == '__main__':
     main()
