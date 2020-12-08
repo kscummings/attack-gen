@@ -47,6 +47,7 @@ CONSTANTS
 DATA_PATH="/Users/kaylacummings/Dropbox (MIT)/batadal" # get_data_path()
 TRIAL_DIR="interdiction_results"
 OUTPUT_DIR="train_results"
+SYNTHDATA_DIR="sim_data"
 
 TEST_SIZE=0.3
 BATCH_SIZE=256
@@ -55,7 +56,8 @@ NUM_TRIALS=3
 
 # front matter ..
 TRIAL_PATH=path.join(DATA_PATH,TRIAL_DIR)
-OUTPUT_PATH=path.join(DATA_PATH,TRIAL_DIR,OUTPUT_DIR)
+OUTPUT_PATH=path.join(TRIAL_PATH,OUTPUT_DIR)
+SYNTHDATA_PATH=path.join(TRIAL_PATH,SYNTHDATA_DIR)
 tf.compat.v1.disable_eager_execution()
 
 
@@ -123,6 +125,7 @@ def build_attack_detection_model(conv_layers = [50,50,50],
 
 def train_attack_gen(data,
                      output_dir,
+                     model_name,
                      epochs=100,
                      test_size=0.3,
                      batch_size=256,
@@ -135,7 +138,7 @@ def train_attack_gen(data,
     except OSError as e:
         raise e
 
-    (X,y)=data
+    (X,y),(X_test,y_test)=data
     X_tr,X_val,y_tr,y_val=train_test_split(X,y,stratify=y,test_size=test_size,shuffle=True)
 
     model=build_attack_detection_model()
@@ -147,20 +150,30 @@ def train_attack_gen(data,
 
     # save loss
     d=model.history.history
-    history=np.stack([d['loss'],d['val_loss'],d['acc'],d['val_acc']]).T
-    loss_df = pd.DataFrame(history,columns=['loss','val_loss','acc','val_acc'])
-    loss_df.to_csv(os.path.join(output_dir,'loss_results.csv'), index=False)
+    history=np.stack([d['loss'],d['val_loss'],d['accuracy'],d['val_accuracy']]).T
+    loss_df=pd.DataFrame(history,columns=['loss','val_loss','acc','val_acc'])
+    loss_dir=os.path.join(output_dir, "loss")
+    if not path.isdir(loss_dir):
+        os.makedirs(loss_dir)
+    loss_df.to_csv(os.path.join(loss_dir,'loss_%s.csv'%(model_name)), index=False)
 
     # save model
-    model.save_weights(os.path.join(output_dir,'model.h5'))
+    model_dir=os.path.join(output_dir, "models")
+    if not path.isdir(model_dir):
+        os.makedirs(model_dir)
+    model.save_weights(os.path.join(model_dir,'model_%s.h5'%(model_name)))
 
     # save data
-    data_dir=os.path.join(output_dir, "data")
-    os.makedirs(data_dir,exist_ok=True)
-    np.save(os.path.join(data_dir,"train"),X_tr)
-    np.save(os.path.join(data_dir,"test"),X_val)
-    np.save(os.path.join(data_dir,"train_response"),y_tr)
-    np.save(os.path.join(data_dir,"test_response"),y_val)
+    data_dir=os.path.join(output_dir, "train_data")
+    if not path.isdir(data_dir):
+        os.makedirs(data_dir)
+    np.save(os.path.join(data_dir,"train_%s"%(model_name)),X_tr)
+    np.save(os.path.join(data_dir,"test_%s"%(model_name)),X_val)
+    np.save(os.path.join(data_dir,"train_label_%s"%(model_name)),y_tr)
+    np.save(os.path.join(data_dir,"test_label_%s"%(model_name)),y_val)
+
+    # return test results
+    return  confusion_matrix(y_test,get_pred(model.predict(X_test))).ravel()
 
 def get_pred(prediction):
     '''
@@ -170,7 +183,8 @@ def get_pred(prediction):
 
 def train_trials(num_trials,
                  output_dir,
-                 data_dir,
+                 synth_data_dir,
+                 batadal_data_dir,
                  epochs=100,
                  test_size=0.3,
                  batch_size=256):
@@ -180,7 +194,8 @@ def train_trials(num_trials,
     inputs
     *`num_trials`-number of models to train per dataset
     *`output_dir`-directory to store the results
-    *`data_dir`-directory where synthetic training datasets are stored
+    *`synth_data_dir`-directory where synthetic training datasets are stored
+    *`batadal_data_dir`-directory with original training and test sets
     *`epochs`-number of epochs per training session
     *`test_size`-proportion of training data to use for model validation
     '''
@@ -190,116 +205,59 @@ def train_trials(num_trials,
     except OSError as e:
         raise e
 
-    results=pd.DataFrame(np.zeros((4*num_trials,9)),
-        columns=['loss','val_loss','acc','val_acc','test_acc','test_tn','test_fp','test_fn','test_tp'])
-    results=pd.concat([r,results],axis=1)
-    results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
+    # synthetic data locations
+    synth_filenames=glob(path.join(synth_data_dir,"*.pickle"))
+    num_synth=len(synth_filenames)
 
-    # get data
-    (clean,y_clean),(attack,y_attack),(test,y_test),names=get_rolled_data(data_path)
+    # results location
+    cols=['model_name','trial','loss','val_loss','acc','val_acc','test_acc','test_tn','test_fp','test_fn','test_tp']
+    results=pd.DataFrame(columns=cols)
+    finalres_filename=os.path.join(output_dir,"final_results.csv")
+    results.to_csv(finalres_filename,index=False)
 
-    for n in range(num_trials):
+    # test data
+    _,_,(test,y_test),_=get_rolled_data(batadal_data_dir)
 
-        ########################## REAL DATA ONLY
-        current_dir=os.path.join(output_dir,"baseline_%d"%(n+1))
-        train_attack_gen(data=(attack,y_attack),
-                         output_dir=current_dir,
-                         epochs=epochs,
-                         test_size=test_size,
-                         batch_size=batch_size,
-                         w=w)
-        res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
-        test_model=build_attack_detection_model()
-        test_model.load_weights(os.path.join(current_dir,"model.h5"))
-        tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
+    record_ind=0
+    for fn in synth_filenames[:3]:
+        # get data
+        with open(fn,"rb") as f:
+            X,y=pickle.load(f)
+        root_model_name=fn.replace(synth_data_dir,"").replace("/sim_data_","").replace(".pickle","")
 
-        results.loc[4*n,'model_type']='baseline'
-        results.loc[4*n,1:5]=np.array(res.iloc[len(res)-1])
-        results.loc[4*n,'test_acc']=(tn+tp)/len(y_test)
-        results.loc[4*n,6:]=np.array([tn,fp,fn,tp])
-        results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
+        for n in range(num_trials):
 
-        ########################## WITH SYNTHETIC SWAPS
-        current_dir=os.path.join(output_dir,"synth_swaps_{}".format(n+1))
-        data=synthetic_data.get_synthetic_training_data(decoder_weights,
-                                         classifier_weights,
-                                         clean_decoder_weights,
-                                         implant_synth_attacks=False,
-                                         implant_manual_attacks=True)
-        train_attack_gen(data=data,
-                         output_dir=current_dir,
-                         epochs=epochs,
-                         test_size=test_size,
-                         batch_size=batch_size)
-        res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
-        test_model=build_attack_detection_model()
-        test_model.load_weights(os.path.join(current_dir,"model.h5"))
-        tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
+            model_name="%s_%d"%(root_model_name,n)
+            tn,fp,fn,tp=train_attack_gen(
+                             data=((X,y),(test,y_test)),
+                             output_dir=output_dir,
+                             model_name=model_name,
+                             epochs=epochs,
+                             test_size=test_size,
+                             batch_size=batch_size,
+                             w=w)
 
-        results.loc[4*n+1,'model_type']='synth_swaps'
-        results.loc[4*n+1,1:5]=np.array(res.iloc[len(res)-1])
-        results.loc[4*n+1,'test_acc']=(tn+tp)/len(y_test)
-        results.loc[4*n+1,6:]=np.array([tn,fp,fn,tp])
-        results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
 
-        ########################## WITH SYNTHETIC GENERATED
-        current_dir=os.path.join(output_dir,"synth_gen_{}".format(n+1))
-        data=synthetic_data.get_synthetic_training_data(decoder_weights,
-                                         classifier_weights,
-                                         clean_decoder_weights,
-                                         implant_synth_attacks=True,
-                                         implant_manual_attacks=False)
-        train_attack_gen(data=data,
-                         output_dir=current_dir,
-                         epochs=epochs,
-                         test_size=test_size,
-                         batch_size=batch_size)
-        res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
-        test_model=build_attack_detection_model()
-        test_model.load_weights(os.path.join(current_dir,"model.h5"))
-        tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
+            # populate final results df
+            res=pd.read_csv(os.path.join(output_dir,"loss","loss_%s.csv"%(model_name)))
+            row=np.hstack(([root_model_name,n],np.array(res.iloc[len(res)-1]),[(tn+tp)/len(y_test)],[tn,fp,fn,tp]))
+            results=pd.DataFrame(row.reshape(1,row.shape[0]),columns=cols)
+            results.to_csv(finalres_filename,index=False,mode='a',header=False)
 
-        results.loc[4*n+2,'model_type']='synth_swaps'
-        results.loc[4*n+2,1:5]=np.array(res.iloc[len(res)-1])
-        results.loc[4*n+2,'test_acc']=(tn+tp)/len(y_test)
-        results.loc[4*n+2,6:]=np.array([tn,fp,fn,tp])
-        results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
-
-        ########################## BOTH SWAPS AND GENERATED
-        current_dir=os.path.join(output_dir,"both_{}".format(n+1))
-        data=synthetic_data.get_synthetic_training_data(decoder_weights,
-                                         classifier_weights,
-                                         clean_decoder_weights,
-                                         implant_synth_attacks=True,
-                                         implant_manual_attacks=True)
-        train_attack_gen(data=data,
-                         output_dir=current_dir,
-                         epochs=epochs,
-                         test_size=test_size,
-                         batch_size=batch_size)
-        res=pd.read_csv(os.path.join(current_dir,"loss_results.csv"))
-        test_model=build_attack_detection_model()
-        test_model.load_weights(os.path.join(current_dir,"model.h5"))
-        tn,fp,fn,tp = confusion_matrix(y_test,get_pred(test_model.predict(test))).ravel()
-
-        results.loc[4*n+3,'model_type']='both'
-        results.loc[4*n+3,1:5]=np.array(res.iloc[len(res)-1])
-        results.loc[4*n+3,'test_acc']=(tn+tp)/len(y_test)
-        results.loc[4*n+3,6:]=np.array([tn,fp,fn,tp])
-        results.to_csv(os.path.join(output_dir,"final_results.csv"), index=False)
 
 '''
 MAIN LOOP
 '''
 
 def main():
-    train_trials(num_trials=NUM_TRIALS,
-                 output_dir=output_dir,
-                 models_dir=models_dir,
-                 epochs=NUM_EPOCHS,
-                 test_size=TEST_SIZE,
-                 batch_size=BATCH_SIZE)
 
+    train_trials(num_trials=NUM_TRIALS,
+                 output_dir=OUTPUT_PATH,
+                 synth_data_dir=SYNTHDATA_PATH,
+                 batadal_data_dir=DATA_PATH,
+                 epochs=NUM_EPOCHS,
+                 test_size=0.3,
+                 batch_size=256)
 
 
 if __name__ == '__main__':
