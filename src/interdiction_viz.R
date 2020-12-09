@@ -24,12 +24,12 @@ groups <- int %>%
   filter(trial_type!="full") %>%
   select(trial_type,trial_param)
 for (i in 1:nrow(groups)) {
-  trial_param <- groups$trial_param[i]
-  trial_type <- groups$trial_type[i]
+  tparam <- groups$trial_param[i]
+  ttype <- groups$trial_type[i]
   int %>%
-    filter(trial_param==trial_param) %>%
+    filter(trial_param==tparam) %>%
     write_csv(file.path(DATA_PATH,TRIAL_DIR,INTERDICTION_DIR,
-                        paste0("network","_",trial_type,"_",trial_param,".csv")))
+                        paste0("network","_",ttype,"_",tparam,".csv")))
 }
 
 
@@ -51,6 +51,51 @@ results %>%
   filter(trial_type=="bfs") %>%
   mutate(pct_dem=obj/baseline_obj) %>% 
   ggplot() +
-  geom_violin(aes(x=budget,y=pct_dem,fill=fortify)) +
+  geom_boxplot(aes(x=as.factor(budget),y=1-pct_dem,fill=fortify)) +
   facet_wrap(~trial_param) +
-  ylim(c(0,1))
+  ylim(c(0,1))+
+  theme_bw()+
+  labs(x="Interdiction budget (number of links)",
+       y="Percent decrease") +
+  scale_fill_discrete("Fortified") +
+  ggtitle("Percent decrease in maximum flow",
+          subtitle="Cluster targeting strategy - stratified by BFS depth")
+
+
+# look at distributions 
+results %>%
+  filter(trial_type=="bfs") %>%
+  group_by(budget,fortify,trial_param) %>%
+  summarise(total=sum(s1+s2+s3+s4+s5),
+            s1=sum(s1)/total,
+            s2=sum(s2)/total,
+            s3=sum(s3)/total,
+            s4=sum(s4)/total,
+            s5=sum(s5)/total) %>%
+  pivot_longer(c(s1,s2,s3,s4,s5),
+               values_to="int_prop",
+               names_to="sensor_set") %>%
+  ggplot(aes(x=sensor_set,y=int_prop,fill=fortify)) +
+  geom_bar(stat="identity",position="dodge") +
+  facet_grid(trial_param ~ as.factor(budget)) +
+  theme_bw() +
+  labs(x="Sensor set",y="Interdiction proportion") +
+  scale_fill_discrete("Fortify") 
+results %>%
+  filter(trial_type=="unif") %>%
+  group_by(budget,fortify,trial_param) %>%
+  summarise(total=sum(s1+s2+s3+s4+s5),
+            s1=sum(s1)/total,
+            s2=sum(s2)/total,
+            s3=sum(s3)/total,
+            s4=sum(s4)/total,
+            s5=sum(s5)/total) %>%
+  pivot_longer(c(s1,s2,s3,s4,s5),
+               values_to="int_prop",
+               names_to="sensor_set") %>%
+  ggplot(aes(x=sensor_set,y=int_prop,fill=fortify)) +
+  geom_bar(stat="identity",position="dodge") +
+  facet_grid(trial_param ~ as.factor(budget)) +
+  theme_bw() +
+  labs(x="Sensor set",y="Interdiction proportion") +
+  scale_fill_discrete("Fortify")

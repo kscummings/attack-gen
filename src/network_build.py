@@ -24,7 +24,7 @@ from os import path
 
 ######################## INPUTS
 
-letters=string.digits
+# letters=string.digits
 # rand_string=''.join(random.choice(letters) for i in range(5))
 # OUTPUT_DIR="test_%s"%(rand_string)
 OUTPUT_DIR="small_batch"
@@ -543,6 +543,37 @@ def plots():
     plt.show()
     plt.hist(dem.mean(axis=0),density=True,bins=30)
     plt.show()
+
+def network_viz(network_path):
+    networks=os.listdir(network_path)
+
+    # get topology
+    intnet=InterdictionNetwork(INPUT_PATH)
+    for fn in networks:
+        full_fn=path.join(network_path,fn)
+        intres=pd.read_csv(fn)
+
+        # create dictionary mapping to interdiction frequency
+        intdict_id={intres.at[i,"edge_id"]:intres.at[i,"num_int"] for i in range(len(intres))}
+
+        # add as edge attribute to graph, then plot with that as the color
+        H=copy(intnet.original_wn.get_network())
+        edge_ids=nx.get_edge_attributes(H,"edge_id")
+        edge_ids={edge_id:edge for (edge,edge_id) in edge_ids.items()}
+
+        # convert to (u,v)=>att dict instead of edge_id=>att
+        intdict_uv={edge_ids[edge]:num_int for (edge,num_int) in intdict_id.items()}
+        not_interdicted=[(u,v) for (u,v) in edge_ids.values() if (u,v) not in intdict_uv.keys()]
+        intdict_uv.update({(u,v):0 for (u,v) in not_interdicted})
+
+        # actually, turn into a dataframe lol
+        vals=[[u,v,val] for (u,v),val in intdict_uv.items()]
+        cvals=pd.DataFrame(vals,columns=['from','to','interdicted'])
+
+        # plot
+        pos=nx.get_node_attributes(H,"pos")
+        nx.draw_networkx_nodes(H,pos,node_size=5)
+        nx.draw_networkx_edges(H,pos,arrows=False,edge_color=cvals['interdicted'],width=3,edge_cmap=plt.cm.Reds)
 
 def main():
     trial_loop(INPUT_PATH, OUTPUT_PATH, FILENAME_ROOT, NUM_SIM, UNIF_ARGS, BFS_ARGS)
