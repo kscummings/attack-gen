@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from copy import copy
+from itertools import count
 from math import pi
 from networkx.algorithms import bfs_tree
 from os import path
@@ -551,7 +552,7 @@ def network_viz(network_path):
     intnet=InterdictionNetwork(INPUT_PATH)
     for fn in networks:
         full_fn=path.join(network_path,fn)
-        intres=pd.read_csv(fn)
+        intres=pd.read_csv(full_fn)
 
         # create dictionary mapping to interdiction frequency
         intdict_id={intres.at[i,"edge_id"]:intres.at[i,"num_int"] for i in range(len(intres))}
@@ -573,7 +574,49 @@ def network_viz(network_path):
         # plot
         pos=nx.get_node_attributes(H,"pos")
         nx.draw_networkx_nodes(H,pos,node_size=5)
-        nx.draw_networkx_edges(H,pos,arrows=False,edge_color=cvals['interdicted'],width=3,edge_cmap=plt.cm.Reds)
+        vmin=cvals['interdicted'].min()
+        vmax=cvals['interdicted'].max()
+        cmap=plt.cm.PuRd
+        edges=nx.draw_networkx_edges(H,pos=pos,arrows=False,edge_color=cvals['interdicted'],width=3,edge_cmap=cmap)
+        sm=plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=vmin,vmax=vmax))
+        sm.set_array([])
+        cbar=plt.colorbar(sm)
+        plt.savefig(path.join(network_path,"network_%s.png"%(fn.replace("network_","").replace(".csv",""))), bbox_inches='tight')
+        plt.close()
+
+
+def network_plots():
+    intnet=InterdictionNetwork(INPUT_PATH)
+    H=copy(intnet.original_wn.get_network())
+
+    # fortification plot
+    red_edges=[(u,v) for (u,v) in intnet.fortified_edges if (u,v) in H.edges]
+    pos=nx.get_node_attributes(H,"pos")
+    nx.draw_networkx_nodes(H,pos,node_size=5)
+    nx.draw_networkx_edges(H,pos,red_edges,arrows=False,edge_color='r')
+    nx.draw_networkx_edges(H,pos,[(u,v) for (u,v) in H.edges if (u,v) not in red_edges],edge_color='black',arrows=False)
+    plt.savefig(path.join(network_path,"fortified.png"),bbox_inches='tight')
+
+    # sensor xwalk plot
+    exw=pd.read_csv(path.join(DATA_PATH,"edge_sensor_xwalk.csv"))
+    exw_dict={exw.loc[i,"edge_id"]:exw.loc[i,"sensor_set_id"] for i in range(len(exw))}
+    edge_ids=nx.get_edge_attributes(H,"edge_id")
+    xw_vals=[[u,v,exw_dict[edge_id]] for (u,v),edge_id in edge_ids.items() if (u,v) in H.edges]
+    ss=pd.DataFrame(xw_vals,columns=["from","to","sensor_set"])
+    edge_ids={edge_id:edge for (edge,edge_id) in edge_ids.items()}
+
+    pos=nx.get_node_attributes(H,"pos")
+    nx.draw_networkx_nodes(H,pos,node_size=5)
+    vmin=ss['sensor_set'].min()
+    vmax=ss['sensor_set'].max()
+    cmap=plt.cm.jet
+    edges=nx.draw_networkx_edges(H,pos=pos,arrows=False,edge_color=ss['sensor_set'],width=3,edge_cmap=plt.cm.jet)
+    sm=plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm.set_array([])
+    cbar=plt.colorbar(sm)
+    plt.savefig(path.join(network_path,"network_%s.png"%(fn.replace("network_","").replace(".csv",""))), bbox_inches='tight')
+
+
 
 def main():
     trial_loop(INPUT_PATH, OUTPUT_PATH, FILENAME_ROOT, NUM_SIM, UNIF_ARGS, BFS_ARGS)
