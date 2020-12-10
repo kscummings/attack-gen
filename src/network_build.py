@@ -536,7 +536,7 @@ def plots():
     res.plot()
     supply.plot()
     plt.show()
-    dem.plot()
+    dem.plot(legend=None)
     plt.show()
 
     # average supply and demand
@@ -616,7 +616,67 @@ def network_plots():
     cbar=plt.colorbar(sm)
     plt.savefig(path.join(network_path,"network_%s.png"%(fn.replace("network_","").replace(".csv",""))), bbox_inches='tight')
 
+def dem_viz(intnet):
+    H=copy(intnet.original_wn.get_network())
+    dem=intnet.get_demand()
+    # this one makes it hard to see
+    dem[("J93","sink")]=0
+    demdf=pd.DataFrame([[u,d] for (u,v),d in dem.items()],columns=['ID','dem'])
+    demdf=demdf.set_index('ID')
+    demdf=demdf.reindex(H.nodes())
+    vmin=0
+    vmax=demdf['dem'].max()
 
+    cmap=plt.cm.Reds
+    sm=plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    sm.set_array([])
+
+
+
+    nx.draw_networkx_nodes(H,pos,node_size=10,node_color=demdf['dem'],cmap=cmap,vmin=vmin,vmax=vmax)
+    nx.draw_networkx_edges(H,pos,width=2,edge_color="grey",arrows=False)
+    plt.colorbar(sm)
+    plt.show()
+
+    # unif
+    alpha=0.5
+    active=[j for (j,t),demand in dem.items() if demand>0]
+    sample_size=int(np.ceil(alpha*len(active)))
+    null_nodes=list(np.random.choice(active,sample_size,replace=False))
+    unif_dem=copy(dem)
+    unif_dem.update({(u,'sink'):0 for u in null_nodes})
+    demdf=pd.DataFrame([[u,d] for (u,v),d in unif_dem.items()],columns=['ID','dem'])
+    demdf=demdf.set_index('ID')
+    demdf=demdf.reindex(H.nodes())
+    # same color bar
+    nx.draw_networkx_nodes(H,pos,node_size=10,node_color=demdf['dem'],cmap=cmap,vmin=vmin,vmax=vmax)
+    nx.draw_networkx_edges(H,pos,width=2,edge_color="grey",arrows=False)
+    plt.colorbar(sm)
+    plt.show()
+
+    # bfs
+    edge_depth=10
+    seed_node=np.random.choice(active,1)[0]
+    bt=bfs_tree(H.to_undirected(),seed_node)
+    keep,level=[seed_node],[seed_node]
+    for cur_depth in range(edge_depth):
+        # sweep next tier of BFS tree
+        level=[n for node in level for n in bt.neighbors(node)]
+        keep=np.hstack((keep,level))
+    keep=[n for n in list(keep) if n in junctions]
+
+    # to target these nodes, turn off everything else
+    null_nodes=[n for n in active if n not in keep]
+    bfs_dem=copy(dem)
+    bfs_dem.update({(u,'sink'):0 for u in null_nodes})
+    demdf=pd.DataFrame([[u,d] for (u,v),d in bfs_dem.items()],columns=['ID','dem'])
+    demdf=demdf.set_index('ID')
+    demdf=demdf.reindex(H.nodes())
+    # same color bar
+    nx.draw_networkx_nodes(H,pos,node_size=10,node_color=demdf['dem'],cmap=cmap,vmin=vmin,vmax=vmax)
+    nx.draw_networkx_edges(H,pos,width=2,edge_color="grey",arrows=False)
+    plt.colorbar(sm)
+    plt.show()
 
 def main():
     trial_loop(INPUT_PATH, OUTPUT_PATH, FILENAME_ROOT, NUM_SIM, UNIF_ARGS, BFS_ARGS)

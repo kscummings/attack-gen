@@ -59,7 +59,14 @@ results %>%
        y="Percent decrease") +
   scale_fill_discrete("Fortified") +
   ggtitle("Percent decrease in maximum flow",
-          subtitle="Cluster targeting strategy - stratified by BFS depth")
+          subtitle="Cluster targeting strategy - stratified by BFS depth")+
+  theme(axis.text.x = element_text(size=12),
+        axis.text.y = element_text(size=12),
+        axis.title.y = element_text(size=12),
+        title = element_text(size=16),
+        legend.text = element_text(size=12),
+        strip.text = element_text(size = 12))
+
 
 
 # look at distributions 
